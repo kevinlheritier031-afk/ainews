@@ -1,0 +1,21 @@
+# Env files with secrets
+.env
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Node / Expo
+node_modules/
+.expo/
+dist/
+android/
+ios/
+
+# OS
+.DS_Store
+Thumbs.db
