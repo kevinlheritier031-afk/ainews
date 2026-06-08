@@ -23,11 +23,9 @@ class _UTCFormatter(logging.Formatter):
         return datetime.fromtimestamp(record.created, tz=timezone.utc).strftime(
             "%Y-%m-%d %H:%M:%S"
         )
-
     def format(self, record):
         record.levelname = f"{record.levelname:<8}"
         return super().format(record)
-
 
 _handler = logging.StreamHandler(sys.stdout)
 _handler.setFormatter(_UTCFormatter("[%(asctime)s] %(levelname)s %(message)s"))
@@ -40,28 +38,55 @@ logger.setLevel(logging.INFO)
 
 class NewsItem(BaseModel):
     title: str
-    category: str          # "Modèle" | "Framework" | "Recherche"
-    summary: str           # 2 phrases max, denses et techniques
-    code_example: str      # snippet Python/bash en markdown
+    category: str           # "Modèle" | "Framework" | "Recherche"
+    summary: str            # 2 phrases max, denses et techniques, en français
+    code_example: str       # snippet Python/bash en markdown
     source_url: str
+    importance_score: int   # 1-10 : pertinence et impact dans l'écosystème IA
 
 
 class NewsCollection(BaseModel):
-    items: list[NewsItem]  # 5 à 12 items
+    items: list[NewsItem]   # 5 à 12 items
 
 
 # ── Sources ───────────────────────────────────────────────────────────────────
 
-RSS_FEEDS: list[tuple[str, str]] = [
+FALLBACK_FEEDS: list[tuple[str, str]] = [
     ("HuggingFace Daily Papers", "https://huggingface.co/papers/rss"),
     ("OpenAI Blog",              "https://openai.com/news/rss.xml"),
     ("Anthropic Blog",           "https://www.anthropic.com/news/rss"),
     ("Google DeepMind",          "https://deepmind.google/blog/rss/"),
+    ("arXiv AI",                 "https://export.arxiv.org/rss/cs.AI"),
+    ("arXiv Machine Learning",   "https://export.arxiv.org/rss/cs.LG"),
+    ("arXiv NLP",                "https://export.arxiv.org/rss/cs.CL"),
+    ("VentureBeat AI",           "https://feeds.feedburner.com/venturebeat/SZYF"),
+    ("MIT Tech Review AI",       "https://www.technologyreview.com/feed/"),
 ]
+
+def load_sources_from_db() -> list[tuple[str, str]]:
+    """Charge les sources actives depuis Supabase. Fallback sur liste statique si vide."""
+    url = os.environ.get("SUPABASE_URL")
+    key = os.environ.get("SUPABASE_SERVICE_KEY")
+    if not url or not key:
+        return FALLBACK_FEEDS
+    try:
+        db: Client = create_client(url, key)
+        result = db.table("ai_sources").select("name, rss_url").eq("active", True).execute()
+        rows = result.data or []
+        if not rows:
+            logger.info("ai_sources table empty — using fallback feeds")
+            return FALLBACK_FEEDS
+        feeds = [(r["name"], r["rss_url"]) for r in rows]
+        logger.info("Loaded %d sources from Supabase", len(feeds))
+        return feeds
+    except Exception as exc:
+        logger.warning("Could not load sources from DB: %s — using fallback", exc)
+        return FALLBACK_FEEDS
 
 HN_KEYWORDS: list[str] = [
     "LLM", "GPT", "Claude", "Gemini", "transformer",
     "RAG", "AI agent", "fine-tuning", "open source model",
+    "diffusion model", "multimodal", "reasoning model",
 ]
 
 HN_API = "https://hn.algolia.com/api/v1/search"
@@ -71,17 +96,18 @@ HN_API = "https://hn.algolia.com/api/v1/search"
 
 def fetch_rss() -> list[dict]:
     articles: list[dict] = []
-    for name, url in RSS_FEEDS:
+    rss_feeds = load_sources_from_db()
+    for name, url in rss_feeds:
         try:
             feed = feedparser.parse(url)
-            for entry in feed.entries[:7]:
+            for entry in feed.entries[:5]:
                 articles.append({
                     "source":  name,
                     "title":   entry.get("title", ""),
                     "url":     entry.get("link", ""),
-                    "snippet": entry.get("summary", entry.get("description", ""))[:300],
+                    "snippet": entry.get("summary", entry.get("description", ""))[:400],
                 })
-            logger.info("RSS [%s]: %d articles", name, len(feed.entries[:7]))
+            logger.info("RSS [%s]: %d articles", name, len(feed.entries[:5]))
         except Exception as exc:
             logger.error("RSS [%s] failed: %s", name, exc)
     return articles
@@ -98,7 +124,7 @@ def fetch_hn() -> list[dict]:
                     "query":          keyword,
                     "tags":           "story",
                     "numericFilters": "points>50",
-                    "hitsPerPage":    5,
+                    "hitsPerPage":    4,
                 },
                 timeout=10,
             )
@@ -117,7 +143,6 @@ def fetch_hn() -> list[dict]:
                     "url":     url,
                     "snippet": f"Points: {hit.get('points', 0)}, Comments: {hit.get('num_comments', 0)}",
                 })
-            logger.info("HN [%s]: %d hits", keyword, len(hits))
         except Exception as exc:
             logger.error("HN [%s] failed: %s", keyword, exc)
     return articles
@@ -127,16 +152,22 @@ def fetch_hn() -> list[dict]:
 
 def _build_prompt(articles: list[dict]) -> str:
     lines = [
-        "Tu es un expert en IA et ML. Analyse ces articles et sélectionne 5 à 12 articles "
-        "représentant le signal technique le plus fort (nouveaux modèles, frameworks open-source, "
-        "papiers de recherche). Ignore le marketing sans substance technique et les doublons.",
+        "Tu es un expert en IA/ML. Analyse ces articles et sélectionne 5 à 12 représentant "
+        "le signal technique le plus fort (nouveaux modèles, frameworks, papiers de recherche). "
+        "Ignore le marketing sans substance et les doublons.",
         "",
         "Pour chaque article sélectionné, génère :",
-        "- title: titre concis et technique",
+        "- title: titre concis et technique (en français si possible)",
         "- category: exactement 'Modèle', 'Framework' ou 'Recherche'",
         "- summary: 2 phrases max, denses et techniques, en français",
         "- code_example: snippet Python ou bash RÉEL en markdown (```python ou ```bash)",
         "- source_url: URL originale de l'article",
+        "- importance_score: entier 1 à 10 selon l'impact réel dans l'écosystème IA :",
+        "    10 = percée majeure (GPT-4, AlphaFold, nouveau modèle frontier)",
+        "    8-9 = annonce importante (nouveau modèle open-source performant, API majeure)",
+        "    6-7 = information utile (benchmark, fine-tuning, framework notable)",
+        "    4-5 = contenu technique mineur",
+        "    1-3 = marketing ou faible signal",
         "",
         "ARTICLES :",
         "",
@@ -183,6 +214,25 @@ def analyze(articles: list[dict]) -> Optional[NewsCollection]:
 _VALID_CATEGORIES = {"Modèle", "Framework", "Recherche"}
 
 
+def _upsert_row(db: Client, row: dict) -> bool:
+    try:
+        db.table("ai_news").upsert(row, on_conflict="content_hash", ignore_duplicates=True).execute()
+        return True
+    except Exception as exc:
+        err = str(exc)
+        # Si la colonne importance_score n'existe pas encore, on réessaie sans elle
+        if "importance_score" in err or "column" in err.lower():
+            row.pop("importance_score", None)
+            try:
+                db.table("ai_news").upsert(row, on_conflict="content_hash", ignore_duplicates=True).execute()
+                return True
+            except Exception as exc2:
+                logger.error("Upsert failed (fallback): %s", exc2)
+        else:
+            logger.error("Upsert failed: %s", exc)
+        return False
+
+
 def upsert(collection: NewsCollection) -> int:
     url = os.environ.get("SUPABASE_URL")
     key = os.environ.get("SUPABASE_SERVICE_KEY")
@@ -193,26 +243,28 @@ def upsert(collection: NewsCollection) -> int:
     db: Client = create_client(url, key)
     inserted = 0
 
-    for item in collection.items:
+    # Trier par importance décroissante pour afficher le plus pertinent en premier
+    sorted_items = sorted(collection.items, key=lambda x: x.importance_score, reverse=True)
+
+    for item in sorted_items:
         if item.category not in _VALID_CATEGORIES:
             logger.warning("Skipped invalid category '%s': %s", item.category, item.title[:50])
             continue
-        try:
-            db.table("ai_news").upsert(
-                {
-                    "title":        item.title,
-                    "category":     item.category,
-                    "summary":      item.summary,
-                    "code_example": item.code_example,
-                    "source_url":   item.source_url,
-                },
-                on_conflict="content_hash",
-                ignore_duplicates=True,
-            ).execute()
+
+        row = {
+            "title":            item.title,
+            "category":         item.category,
+            "summary":          item.summary,
+            "code_example":     item.code_example,
+            "source_url":       item.source_url,
+            "importance_score": item.importance_score,
+            "urgent":           item.importance_score >= 9,
+        }
+
+        if _upsert_row(db, row):
             inserted += 1
-            logger.info("Upserted: %s", item.title[:60])
-        except Exception as exc:
-            logger.error("Upsert failed [%s]: %s", item.title[:40], exc)
+            flag = "🔴 URGENT" if item.importance_score >= 9 else ""
+            logger.info("[%d/10] %s %s", item.importance_score, item.title[:60], flag)
 
     return inserted
 
@@ -222,8 +274,11 @@ def upsert(collection: NewsCollection) -> int:
 def main() -> None:
     logger.info("=== AI News Pipeline started ===")
 
-    articles = fetch_rss() + fetch_hn()
-    logger.info("Total articles collected: %d", len(articles))
+    rss_articles = fetch_rss()
+    hn_articles = fetch_hn()
+    articles = rss_articles + hn_articles
+    logger.info("Total articles collected: %d (RSS: %d, HN: %d)",
+                len(articles), len(rss_articles), len(hn_articles))
 
     if not articles:
         logger.error("No articles collected — aborting")
