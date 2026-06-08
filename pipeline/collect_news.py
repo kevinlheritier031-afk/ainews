@@ -1,5 +1,4 @@
 import calendar
-import hashlib
 import json
 import os
 import sys
@@ -378,9 +377,7 @@ def upsert(collection: NewsCollection, db: Client) -> int:
             logger.warning("Skipped invalid category '%s': %s", item.category, item.title[:50])
             continue
 
-        content_hash = hashlib.sha256(item.source_url.encode()).hexdigest()[:32]
         row = {
-            "content_hash":     content_hash,
             "title":            item.title,
             "category":         item.category,
             "summary":          item.summary,
