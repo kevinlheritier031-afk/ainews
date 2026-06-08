@@ -368,14 +368,25 @@ def _upsert_row(db: Client, row: dict) -> bool:
         return False
 
 
-def upsert(collection: NewsCollection, db: Client) -> int:
+def upsert(collection: NewsCollection, db: Client) -> tuple[int, list[NewsItem]]:
     inserted = 0
+    new_items: list[NewsItem] = []
     sorted_items = sorted(collection.items, key=lambda x: x.importance_score, reverse=True)
+
+    # Articles déjà en base (par source_url) pour éviter les doublons de notif
+    existing_urls: set[str] = set()
+    try:
+        existing = db.table("ai_news").select("source_url").execute()
+        existing_urls = {r["source_url"] for r in (existing.data or [])}
+    except Exception:
+        pass
 
     for item in sorted_items:
         if item.category not in _VALID_CATEGORIES:
             logger.warning("Skipped invalid category '%s': %s", item.category, item.title[:50])
             continue
+
+        is_new = item.source_url not in existing_urls
 
         row = {
             "title":            item.title,
@@ -392,8 +403,10 @@ def upsert(collection: NewsCollection, db: Client) -> int:
             inserted += 1
             flag = "[URGENT]" if item.importance_score >= 9 else ""
             logger.info("[%d/10] %s %s", item.importance_score, item.title[:60], flag)
+            if is_new:
+                new_items.append(item)
 
-    return inserted
+    return inserted, new_items
 
 
 # ── Push notifications Firebase ───────────────────────────────────────────────
@@ -566,10 +579,10 @@ def main() -> None:
         logger.warning("Gemini unavailable (surcharge temporaire) — pipeline skipped")
         sys.exit(0)
 
-    count = upsert(collection, db)
-    logger.info("=== Pipeline complete: %d/%d items upserted ===", count, len(collection.items))
+    count, new_items = upsert(collection, db)
+    logger.info("=== Pipeline complete: %d/%d items upserted (%d nouveaux) ===", count, len(collection.items), len(new_items))
 
-    send_push(collection.items, db)
+    send_push(new_items, db)
 
     archived = archive_old_articles(db)
     logger.info("Archivage: %d articles archivés", archived)
