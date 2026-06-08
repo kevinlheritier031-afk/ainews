@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react'
 import {
   View, Text, FlatList, TouchableOpacity, StyleSheet,
-  ScrollView, RefreshControl, Animated, Dimensions, Modal,
+  ScrollView, RefreshControl, Animated, Dimensions, Modal, Linking,
 } from 'react-native'
 import { LinearGradient } from 'expo-linear-gradient'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -279,6 +279,9 @@ function Section({ category, items }: { category: string; items: NewsItem[] }) {
   )
 }
 
+const APP_VERSION = '2026.06.08'
+const RELEASES_API = 'https://api.github.com/repos/kevinlheritier031-afk/ainews/releases/latest'
+
 export default function Index() {
   const insets = useSafeAreaInsets()
   const router = useRouter()
@@ -287,6 +290,7 @@ export default function Index() {
   const [refreshing, setRefreshing] = useState(false)
   const [urgentItems, setUrgentItems] = useState<NewsItem[]>([])
   const [showAlert, setShowAlert] = useState(false)
+  const [updateUrl, setUpdateUrl] = useState<string | null>(null)
 
   async function fetchNews() {
     const cutoff = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString()
@@ -313,10 +317,24 @@ export default function Index() {
     await AsyncStorage.setItem('last_opened', new Date().toISOString())
   }
 
+  async function checkUpdate() {
+    try {
+      const res = await fetch(RELEASES_API)
+      if (!res.ok) return
+      const json = await res.json()
+      const latest = (json.tag_name as string)?.replace(/^v/, '') ?? ''
+      if (latest && latest > APP_VERSION) {
+        const apk = (json.assets as any[])?.find((a: any) => a.name.endsWith('.apk'))
+        if (apk) setUpdateUrl(apk.browser_download_url)
+      }
+    } catch {}
+  }
+
   useEffect(() => {
     fetchNews().then(data => {
       if (data) checkUrgent(data)
     }).finally(() => setLoading(false))
+    checkUpdate()
   }, [])
 
   async function onRefresh() {
@@ -372,6 +390,11 @@ export default function Index() {
             <Text style={styles.archiveBtnTxt}>ARCHIVE ›</Text>
           </TouchableOpacity>
         </View>
+        {updateUrl && (
+          <TouchableOpacity style={styles.updateBanner} onPress={() => Linking.openURL(updateUrl)}>
+            <Text style={styles.updateBannerTxt}>⬆ MISE À JOUR DISPONIBLE — APPUYER POUR INSTALLER</Text>
+          </TouchableOpacity>
+        )}
         <Ticker items={news} />
         <View style={styles.circuitBar}>
           <View style={[styles.circuitDot, { backgroundColor: '#00e5ff' }]} />
@@ -409,6 +432,24 @@ export default function Index() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#0c1830' },
+
+  updateBanner: {
+    backgroundColor: '#00e5ff22',
+    borderWidth: 1,
+    borderColor: '#00e5ff88',
+    marginHorizontal: 16,
+    marginBottom: 8,
+    borderRadius: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+  },
+  updateBannerTxt: {
+    color: '#00e5ff',
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 1,
+    textAlign: 'center',
+  },
 
   scanline: {
     position: 'absolute', left: 0, right: 0,

@@ -2,6 +2,8 @@
 .env
 !.env.example
 pipeline/firebase-adminsdk.json
+mobile/android/app/ainews.keystore
+mobile/android/gradle.properties
 
 # Python
 __pycache__/
