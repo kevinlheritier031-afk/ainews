@@ -31,6 +31,13 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
+      - name: Compute version
+        id: version
+        run: |
+          VERSION=$(date +'%Y.%m.%d-%H%M')
+          echo "version=v$VERSION" >> $GITHUB_OUTPUT
+          echo "plain=$VERSION" >> $GITHUB_OUTPUT
+
       - name: Install JS dependencies
         working-directory: mobile
         run: npm install
@@ -39,6 +46,7 @@ jobs:
         run: |
           echo "EXPO_PUBLIC_SUPABASE_URL=${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}" > mobile/.env
           echo "EXPO_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}" >> mobile/.env
+          echo "EXPO_PUBLIC_APP_VERSION=${{ steps.version.outputs.plain }}" >> mobile/.env
 
       - name: Restore keystore
         run: echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > mobile/android/app/ainews.keystore
@@ -54,12 +62,6 @@ jobs:
           AINEWS_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
           AINEWS_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: ./gradlew assembleRelease
-
-      - name: Get version
-        id: version
-        run: |
-          VERSION=$(date +'%Y.%m.%d-%H%M')
-          echo "version=v$VERSION" >> $GITHUB_OUTPUT
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2

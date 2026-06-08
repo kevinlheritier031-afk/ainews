@@ -279,7 +279,7 @@ function Section({ category, items }: { category: string; items: NewsItem[] }) {
   )
 }
 
-const APP_VERSION = '2026.06.08'
+const APP_VERSION = process.env.EXPO_PUBLIC_APP_VERSION ?? '2026.06.08'
 const RELEASES_API = 'https://api.github.com/repos/kevinlheritier031-afk/ainews/releases/latest'
 
 export default function Index() {
