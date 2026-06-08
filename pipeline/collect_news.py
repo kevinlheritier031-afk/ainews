@@ -1,3 +1,4 @@
+import calendar
 import json
 import os
 import sys
@@ -94,20 +95,38 @@ HN_API = "https://hn.algolia.com/api/v1/search"
 
 # ── Fetchers ──────────────────────────────────────────────────────────────────
 
+def _is_recent(entry, max_hours: int = 48) -> bool:
+    """Retourne True si l'entrée RSS a été publiée dans les max_hours dernières heures."""
+    for attr in ("published_parsed", "updated_parsed"):
+        t = entry.get(attr)
+        if t:
+            try:
+                ts = calendar.timegm(t)  # struct_time UTC → timestamp UTC
+                age_hours = (datetime.now(timezone.utc).timestamp() - ts) / 3600
+                return age_hours <= max_hours
+            except Exception:
+                pass
+    return True  # pas de date → inclure par défaut
+
+
 def fetch_rss() -> list[dict]:
     articles: list[dict] = []
     rss_feeds = load_sources_from_db()
     for name, url in rss_feeds:
         try:
             feed = feedparser.parse(url)
-            for entry in feed.entries[:5]:
+            count = 0
+            for entry in feed.entries[:15]:  # vérifier plus d'entrées car certaines seront filtrées
+                if not _is_recent(entry):
+                    continue
                 articles.append({
                     "source":  name,
                     "title":   entry.get("title", ""),
                     "url":     entry.get("link", ""),
                     "snippet": entry.get("summary", entry.get("description", ""))[:400],
                 })
-            logger.info("RSS [%s]: %d articles", name, len(feed.entries[:5]))
+                count += 1
+            logger.info("RSS [%s]: %d articles récents", name, count)
         except Exception as exc:
             logger.error("RSS [%s] failed: %s", name, exc)
     return articles
