@@ -56,15 +56,29 @@ class NewsCollection(BaseModel):
 # ── Sources ───────────────────────────────────────────────────────────────────
 
 FALLBACK_FEEDS: list[tuple[str, str]] = [
+    # Labs & recherche
     ("HuggingFace Daily Papers", "https://huggingface.co/papers/rss"),
     ("OpenAI Blog",              "https://openai.com/news/rss.xml"),
     ("Anthropic Blog",           "https://www.anthropic.com/news/rss"),
     ("Google DeepMind",          "https://deepmind.google/blog/rss/"),
+    ("Meta AI Blog",             "https://ai.meta.com/blog/rss/"),
+    ("Microsoft AI Blog",        "https://blogs.microsoft.com/ai/feed/"),
     ("arXiv AI",                 "https://export.arxiv.org/rss/cs.AI"),
     ("arXiv Machine Learning",   "https://export.arxiv.org/rss/cs.LG"),
     ("arXiv NLP",                "https://export.arxiv.org/rss/cs.CL"),
+    # Actualité & industrie
     ("VentureBeat AI",           "https://feeds.feedburner.com/venturebeat/SZYF"),
     ("MIT Tech Review AI",       "https://www.technologyreview.com/feed/"),
+    ("TechCrunch AI",            "https://techcrunch.com/category/artificial-intelligence/feed/"),
+    ("The Verge AI",             "https://www.theverge.com/ai-artificial-intelligence/rss/index.xml"),
+    ("Wired AI",                 "https://www.wired.com/feed/tag/ai/latest/rss"),
+    # Business, funding, stratégie
+    ("Reuters Tech",             "https://feeds.reuters.com/reuters/technologyNews"),
+    ("Bloomberg Tech",           "https://feeds.bloomberg.com/technology/news.rss"),
+    # Communauté & vision
+    ("Import AI (Jack Clark)",   "https://importai.substack.com/feed"),
+    ("The Batch (deeplearning)", "https://www.deeplearning.ai/the-batch/rss/"),
+    ("Towards AI",               "https://towardsai.net/feed"),
 ]
 
 def load_sources_from_db() -> list[tuple[str, str]]:
@@ -90,6 +104,8 @@ HN_KEYWORDS: list[str] = [
     "LLM", "GPT", "Claude", "Gemini", "transformer",
     "RAG", "AI agent", "fine-tuning", "open source model",
     "diffusion model", "multimodal", "reasoning model",
+    "AI regulation", "AI funding", "OpenAI", "Anthropic",
+    "artificial intelligence", "AI startup", "Sam Altman",
 ]
 
 HN_API = "https://hn.algolia.com/api/v1/search"
@@ -215,11 +231,19 @@ def _build_prompt(articles: list[dict], context: dict) -> str:
     lines = [
         f"Date du jour : {today}.",
         f"RÈGLE ABSOLUE : ne sélectionne QUE des articles publiés après le {cutoff} (48h max).",
-        "Si un article parle d'un outil/modèle existant sans annonce récente, l'ignorer.",
+        "Si un article parle d'un outil/modèle existant sans aucune annonce nouvelle, l'ignorer.",
         "",
-        "Tu es un expert en IA/ML. Analyse ces articles et sélectionne les 5 à 8 MEILLEURS représentant "
-        "le signal technique le plus fort (nouveaux modèles, frameworks, papiers de recherche). "
-        "Ignore le marketing sans substance. Qualité > quantité.",
+        "Tu es l'expert IA le plus complet du monde. Cette application couvre TOUT l'écosystème IA :",
+        "- Nouvelles sorties : modèles, frameworks, outils, APIs",
+        "- Recherche : papiers importants, découvertes, benchmarks",
+        "- Vision & stratégie : ce que préparent OpenAI, Anthropic, Google, Meta, Mistral...",
+        "- Business & funding : levées de fonds, partenariats, acquisitions, valorisations",
+        "- Régulation & politique : lois IA, décisions gouvernementales, débats éthiques",
+        "- Communauté : déclarations de leaders (Altman, Hassabis, LeCun...), projections, controverses",
+        "- Tendances : ce qui se prépare, ce qui va changer, ce que l'industrie anticipe",
+        "",
+        "Sélectionne les 5 à 8 signaux les plus importants. Qualité > quantité. "
+        "Ignore le marketing vide sans substance.",
         "",
         "Pour chaque article sélectionné, génère :",
         "- title: titre concis et technique EN FRANÇAIS",
@@ -271,7 +295,7 @@ def _build_prompt(articles: list[dict], context: dict) -> str:
     return "\n".join(lines)
 
 
-_MODELS = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
+_MODELS = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash-latest", "gemini-1.5-flash-8b"]
 
 
 def analyze(articles: list[dict], context: dict) -> Optional[NewsCollection]:
