@@ -42,16 +42,14 @@ jobs:
       - name: Write google-services.json
         run: echo '${{ secrets.GOOGLE_SERVICES_JSON }}' > mobile/android/app/google-services.json
 
-      - name: Write gradle.properties signing config
-        run: |
-          echo "AINEWS_KEYSTORE_FILE=ainews.keystore" >> mobile/android/gradle.properties
-          echo "AINEWS_KEY_ALIAS=ainews" >> mobile/android/gradle.properties
-          echo "AINEWS_STORE_PASSWORD=${{ secrets.ANDROID_STORE_PASSWORD }}" >> mobile/android/gradle.properties
-          echo "AINEWS_KEY_PASSWORD=${{ secrets.ANDROID_KEY_PASSWORD }}" >> mobile/android/gradle.properties
-
       - name: Build release APK
         working-directory: mobile/android
-        run: ./gradlew assembleRelease
+        run: |
+          ./gradlew assembleRelease \
+            -PAINEWS_KEYSTORE_FILE=ainews.keystore \
+            -PAINEWS_KEY_ALIAS=ainews \
+            -PAINEWS_STORE_PASSWORD="${{ secrets.ANDROID_STORE_PASSWORD }}" \
+            -PAINEWS_KEY_PASSWORD="${{ secrets.ANDROID_KEY_PASSWORD }}"
 
       - name: Get version
         id: version
