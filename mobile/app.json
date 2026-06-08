@@ -6,17 +6,20 @@
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
     "scheme": "ainews",
+    "icon": "./assets/icon.png",
     "splash": {
-      "backgroundColor": "#0a0a0a"
+      "backgroundColor": "#00020a"
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.ainews.app"
+      "bundleIdentifier": "com.ainews.app",
+      "icon": "./assets/icon.png"
     },
     "android": {
       "package": "com.ainews.app",
       "adaptiveIcon": {
-        "backgroundColor": "#0a0a0a"
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#00020a"
       }
     },
     "web": {

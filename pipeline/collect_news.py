@@ -27,7 +27,8 @@ class _UTCFormatter(logging.Formatter):
         record.levelname = f"{record.levelname:<8}"
         return super().format(record)
 
-_handler = logging.StreamHandler(sys.stdout)
+import io as _io
+_handler = logging.StreamHandler(_io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace'))
 _handler.setFormatter(_UTCFormatter("[%(asctime)s] %(levelname)s %(message)s"))
 logger = logging.getLogger(__name__)
 logger.addHandler(_handler)
@@ -46,7 +47,7 @@ class NewsItem(BaseModel):
 
 
 class NewsCollection(BaseModel):
-    items: list[NewsItem]   # 5 à 12 items
+    items: list[NewsItem]   # 5 à 8 items
 
 
 # ── Sources ───────────────────────────────────────────────────────────────────
@@ -152,21 +153,23 @@ def fetch_hn() -> list[dict]:
 
 def _build_prompt(articles: list[dict]) -> str:
     lines = [
-        "Tu es un expert en IA/ML. Analyse ces articles et sélectionne 5 à 12 représentant "
+        "Tu es un expert en IA/ML. Analyse ces articles et sélectionne les 5 à 8 MEILLEURS représentant "
         "le signal technique le plus fort (nouveaux modèles, frameworks, papiers de recherche). "
-        "Ignore le marketing sans substance et les doublons.",
+        "Ignore le marketing sans substance et les doublons. Qualité > quantité.",
         "",
         "Pour chaque article sélectionné, génère :",
         "- title: titre concis et technique EN FRANÇAIS",
         "- category: exactement 'Modèle', 'Framework' ou 'Recherche'",
-        "- summary: RÉSUMÉ COMPLET EN FRANÇAIS UNIQUEMENT (jamais en anglais). 6 à 10 phrases",
+        "- summary: RÉSUMÉ COMPLET EN FRANÇAIS UNIQUEMENT (jamais en anglais). 8 à 12 phrases",
         "  couvrant dans l'ordre :",
         "  1. Ce que c'est exactement (nature de l'annonce/découverte)",
-        "  2. Le contexte et pourquoi c'est notable",
-        "  3. Les détails techniques clés (architecture, performances, benchmarks...)",
-        "  4. Ce que ça change concrètement pour les développeurs / chercheurs",
-        "  5. L'impact potentiel sur l'écosystème IA",
-        "  Le lecteur doit pouvoir TOUT comprendre sans lire l'article original.",
+        "  2. Le contexte et pourquoi c'est notable maintenant",
+        "  3. Les détails techniques clés (architecture, taille, performances, benchmarks...)",
+        "  4. Ce que ça change concrètement pour les développeurs et chercheurs",
+        "  5. 2 ou 3 exemples pratiques concrets : 'Avec ça, tu peux maintenant...'",
+        "     (ex: créer un agent qui..., fine-tuner un modèle pour..., intégrer dans...)",
+        "  6. L'impact potentiel sur l'écosystème IA à court terme",
+        "  Le lecteur doit TOUT comprendre et SAVOIR QUOI EN FAIRE sans lire l'article.",
         "- code_example: snippet Python ou bash RÉEL et fonctionnel en markdown",
         "- source_url: URL originale de l'article",
         "- importance_score: entier 1 à 10 selon l'impact réel dans l'écosystème IA :",
@@ -203,7 +206,7 @@ def analyze(articles: list[dict]) -> Optional[NewsCollection]:
                 response_mime_type="application/json",
                 response_schema=NewsCollection,
                 temperature=0.2,
-                max_output_tokens=16384,
+                max_output_tokens=32768,
             ),
         )
         collection: NewsCollection = response.parsed
@@ -270,7 +273,7 @@ def upsert(collection: NewsCollection) -> int:
 
         if _upsert_row(db, row):
             inserted += 1
-            flag = "🔴 URGENT" if item.importance_score >= 9 else ""
+            flag = "[URGENT]" if item.importance_score >= 9 else ""
             logger.info("[%d/10] %s %s", item.importance_score, item.title[:60], flag)
 
     return inserted

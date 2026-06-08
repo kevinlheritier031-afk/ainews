@@ -1,10 +1,11 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react'
+import React, { useEffect, useState, useRef } from 'react'
 import {
   View, Text, FlatList, TouchableOpacity, StyleSheet,
-  Linking, RefreshControl, Animated, Dimensions, Modal, AppState,
+  Linking, RefreshControl, Animated, Dimensions, Modal,
 } from 'react-native'
 import { LinearGradient } from 'expo-linear-gradient'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import { useRouter } from 'expo-router'
 import { createClient } from '@supabase/supabase-js'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 
@@ -125,11 +126,11 @@ function SignalBars({ score, color }: { score: number; color: string }) {
   )
 }
 
-// ── Carte article expansible ──────────────────────────────────────────────────
+// ── Carte article ─────────────────────────────────────────────────────────────
 function Card({ item, index }: { item: NewsItem; index: number }) {
-  const opacity  = useRef(new Animated.Value(0)).current
-  const tx       = useRef(new Animated.Value(30)).current
-  const [expanded, setExpanded] = useState(false)
+  const opacity = useRef(new Animated.Value(0)).current
+  const tx      = useRef(new Animated.Value(30)).current
+  const router  = useRouter()
   const sig = getSignal(item.category)
   const hot = (item.importance_score ?? 0) >= 8
 
@@ -140,10 +141,28 @@ function Card({ item, index }: { item: NewsItem; index: number }) {
     ]).start()
   }, [])
 
+  function openDetail() {
+    router.push({
+      pathname: '/detail',
+      params: {
+        title:            item.title,
+        category:         item.category,
+        summary:          item.summary,
+        code_example:     '',
+        source_url:       item.source_url,
+        importance_score: String(item.importance_score ?? 5),
+        created_at:       item.created_at,
+      },
+    })
+  }
+
   return (
     <Animated.View style={{ opacity, transform: [{ translateX: tx }] }}>
-      <View style={[styles.card, { borderLeftColor: sig.color, backgroundColor: sig.dim }]}>
-
+      <TouchableOpacity
+        onPress={openDetail}
+        activeOpacity={0.82}
+        style={[styles.card, { borderLeftColor: sig.color, backgroundColor: sig.dim }]}
+      >
         {/* Ligne supérieure */}
         <View style={styles.cardHead}>
           <View style={[styles.tagBox, { borderColor: sig.color + '60' }]}>
@@ -157,35 +176,20 @@ function Card({ item, index }: { item: NewsItem; index: number }) {
           <Text style={styles.cardTime}>{timeAgo(item.created_at)} AGO</Text>
         </View>
 
-        {/* Titre — tap pour expand */}
-        <TouchableOpacity onPress={() => setExpanded(e => !e)} activeOpacity={0.8}>
-          <Text style={styles.cardTitle}>{item.title}</Text>
-        </TouchableOpacity>
+        {/* Titre */}
+        <Text style={styles.cardTitle}>{item.title}</Text>
 
-        {/* Résumé : 3 lignes ou complet selon état */}
-        <TouchableOpacity onPress={() => setExpanded(e => !e)} activeOpacity={0.8}>
-          <Text
-            style={styles.cardSummary}
-            numberOfLines={expanded ? undefined : 3}
-          >
-            {item.summary}
-          </Text>
-          <Text style={[styles.expandHint, { color: sig.color }]}>
-            {expanded ? '▲ RÉDUIRE' : '▼ LIRE LA SYNTHÈSE COMPLÈTE'}
-          </Text>
-        </TouchableOpacity>
+        {/* Aperçu résumé — 3 lignes max */}
+        <Text style={styles.cardSummary} numberOfLines={3}>{item.summary}</Text>
 
         {/* Pied */}
         <View style={styles.cardFoot}>
           {item.importance_score != null
             ? <SignalBars score={item.importance_score} color={sig.color} />
             : <View />}
-          <TouchableOpacity onPress={() => Linking.openURL(item.source_url)}>
-            <Text style={[styles.accessBtn, { color: sig.color + '99' }]}>SOURCE ›</Text>
-          </TouchableOpacity>
+          <Text style={[styles.accessBtn, { color: sig.color }]}>LIRE LA SYNTHÈSE ›</Text>
         </View>
-
-      </View>
+      </TouchableOpacity>
     </Animated.View>
   )
 }
