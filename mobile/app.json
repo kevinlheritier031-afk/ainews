@@ -26,7 +26,22 @@
       "bundler": "metro"
     },
     "plugins": [
-      "expo-router"
-    ]
+      "expo-router",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#00e5ff",
+          "sounds": [],
+          "androidMode": "default",
+          "androidCollapsedTitle": "◈ AI NEWS"
+        }
+      ]
+    ],
+    "notification": {
+      "icon": "./assets/icon.png",
+      "color": "#00e5ff",
+      "androidMode": "default"
+    }
   }
 }

@@ -396,6 +396,59 @@ def upsert(collection: NewsCollection, db: Client) -> int:
     return inserted
 
 
+# ── Push notifications ────────────────────────────────────────────────────────
+
+def send_push(inserted_items: list[NewsItem], db: Client) -> None:
+    """Envoie une notification push si des articles importants ont été insérés."""
+    notable = [i for i in inserted_items if i.importance_score >= 8]
+    if not notable:
+        return
+
+    try:
+        tokens_res = db.table("push_tokens").select("token").execute()
+        tokens = [r["token"] for r in (tokens_res.data or [])]
+        if not tokens:
+            return
+
+        top = notable[0]
+        score = top.importance_score
+
+        if score == 10:
+            title = "🚨 ANNONCE MAJEURE"
+        elif score == 9:
+            title = "⚡ SIGNAL CRITIQUE"
+        else:
+            title = "◈ AI NEWS"
+
+        if len(notable) == 1:
+            body = top.title
+        else:
+            body = f"{len(notable)} nouveaux signaux — {top.title[:70]}"
+
+        messages = [
+            {
+                "to": token,
+                "title": title,
+                "body": body,
+                "sound": "default",
+                "priority": "high" if score >= 9 else "normal",
+                "channelId": "ainews-alerts",
+                "data": {"source_url": top.source_url, "category": top.category},
+            }
+            for token in tokens
+        ]
+
+        resp = requests.post(
+            "https://exp.host/--/api/v2/push/send",
+            json=messages,
+            headers={"Accept": "application/json", "Content-Type": "application/json"},
+            timeout=10,
+        )
+        logger.info("Push envoyé à %d token(s) — %s : %s", len(tokens), title, body[:60])
+    except Exception as exc:
+        logger.warning("Push notification failed: %s", exc)
+
+
 # ── Archivage automatique ─────────────────────────────────────────────────────
 
 def remove_duplicates(db: Client) -> int:
@@ -497,6 +550,8 @@ def main() -> None:
 
     count = upsert(collection, db)
     logger.info("=== Pipeline complete: %d/%d items upserted ===", count, len(collection.items))
+
+    send_push(collection.items, db)
 
     archived = archive_old_articles(db)
     logger.info("Archivage: %d articles archivés", archived)
