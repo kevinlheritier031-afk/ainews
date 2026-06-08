@@ -381,10 +381,13 @@ export default function Index() {
           <View style={styles.logoMark}>
             <Text style={styles.logoMarkTxt}>◈</Text>
           </View>
-          <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 2 }}>
-            <Text style={styles.logoAI}>AI</Text>
-            <Text style={styles.logoSlash}>/</Text>
-            <Text style={styles.logoNEWS}>NEWS</Text>
+          <View style={{ flexDirection: 'column', gap: 1 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 2 }}>
+              <Text style={styles.logoAI}>AI</Text>
+              <Text style={styles.logoSlash}>/</Text>
+              <Text style={styles.logoNEWS}>NEWS</Text>
+            </View>
+            <Text style={styles.logoVersion}>v{APP_VERSION}</Text>
           </View>
           <TouchableOpacity onPress={() => router.push('/archive')} style={styles.archiveBtn}>
             <Text style={styles.archiveBtnTxt}>ARCHIVE ›</Text>
@@ -468,6 +471,7 @@ const styles = StyleSheet.create({
   logoNEWS:   { color: '#00e5ff', fontSize: 26, fontWeight: '900', letterSpacing: 2 },
   archiveBtn:    { marginLeft: 'auto', borderWidth: 1, borderColor: 'rgba(0,229,255,0.25)', borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4 },
   archiveBtnTxt: { color: '#00e5ff', fontSize: 9, fontWeight: '900', letterSpacing: 1.2 },
+  logoVersion:   { color: '#2a4a60', fontSize: 8, letterSpacing: 1, fontWeight: '600' },
 
   tickerBar:    { flexDirection: 'row', alignItems: 'center', marginBottom: 10, height: 28, backgroundColor: 'rgba(0,229,255,0.04)', borderRadius: 6, borderWidth: 1, borderColor: 'rgba(0,229,255,0.08)', overflow: 'hidden' },
   tickerLabel:  { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, borderRightWidth: 1, borderRightColor: 'rgba(0,229,255,0.12)', height: '100%' },
