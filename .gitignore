@@ -16,8 +16,8 @@ venv/
 node_modules/
 .expo/
 dist/
-android/
-ios/
+/android/
+/ios/
 
 # OS
 .DS_Store
