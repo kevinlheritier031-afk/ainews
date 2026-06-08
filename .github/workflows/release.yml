@@ -35,18 +35,6 @@ jobs:
         working-directory: mobile
         run: npm install
 
-      - name: Bundle JS (Android)
-        working-directory: mobile
-        run: |
-          mkdir -p android/app/src/main/assets
-          npx react-native bundle \
-            --platform android \
-            --dev false \
-            --entry-file node_modules/expo-router/entry.js \
-            --bundle-output android/app/src/main/assets/index.android.bundle \
-            --assets-dest android/app/src/main/res \
-            --reset-cache
-
       - name: Restore keystore
         run: echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > mobile/android/app/ainews.keystore
 
@@ -60,7 +48,6 @@ jobs:
           AINEWS_KEY_ALIAS: ainews
           AINEWS_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
           AINEWS_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-          SKIP_BUNDLING: true
         run: ./gradlew assembleRelease
 
       - name: Get version
