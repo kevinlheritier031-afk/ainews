@@ -289,10 +289,12 @@ export default function Index() {
   const [showAlert, setShowAlert] = useState(false)
 
   async function fetchNews() {
+    const cutoff = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString()
     const { data } = await supabase
       .from('ai_news')
       .select('id, title, category, summary, source_url, created_at, importance_score, urgent')
       .eq('archived', false)
+      .gte('created_at', cutoff)
       .order('importance_score', { ascending: false, nullsFirst: false })
       .order('created_at', { ascending: false })
       .limit(40)
