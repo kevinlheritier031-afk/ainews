@@ -295,7 +295,13 @@ def _build_prompt(articles: list[dict], context: dict) -> str:
     return "\n".join(lines)
 
 
-_MODELS = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash-latest", "gemini-1.5-flash-8b"]
+_MODELS = [
+    "gemini-2.5-flash",
+    "gemini-2.0-flash",
+    "gemini-2.5-flash-lite",
+    "gemini-2.0-flash-lite",
+    "gemini-flash-lite-latest",
+]
 
 
 def analyze(articles: list[dict], context: dict) -> Optional[NewsCollection]:
