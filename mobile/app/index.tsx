@@ -67,10 +67,10 @@ function Ticker({ items }: { items: NewsItem[] }) {
   const [contentW, setContentW] = useState(0)
   const anim = useRef<Animated.CompositeAnimation | null>(null)
 
-  const top = items.filter(i => (i.importance_score ?? 0) >= 7).slice(0, 8)
+  const top = items.filter(i => (i.importance_score ?? 0) >= 7).slice(0, 10)
   const text = top.length > 0
-    ? top.map(i => `◈ ${i.title}`).join('     ·     ')
-    : '◈ SCANNING LIVE FEEDS…     ·     ◈ GEMINI RANKING SIGNALS…'
+    ? top.map(i => `[${i.importance_score}/10] ${i.title}`).join('     ·     ')
+    : 'Aucun signal fort détecté — prochain scan dans quelques minutes…'
 
   useEffect(() => {
     if (contentW === 0) return
@@ -79,7 +79,7 @@ function Ticker({ items }: { items: NewsItem[] }) {
     anim.current = Animated.loop(
       Animated.timing(tx, {
         toValue: -contentW,
-        duration: (contentW + SCREEN_W) * 30,
+        duration: (contentW + SCREEN_W) * 28,
         useNativeDriver: true,
       })
     )
@@ -87,12 +87,13 @@ function Ticker({ items }: { items: NewsItem[] }) {
     return () => anim.current?.stop()
   }, [contentW, text])
 
+  const lastUpdate = items.length > 0 ? timeAgo(items[0].created_at) : '--'
+
   return (
     <View style={styles.tickerBar}>
-      <LinearGradient colors={['#0c1830', 'transparent']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.tickerFadeL} pointerEvents="none" />
       <View style={styles.tickerLabel}>
         <View style={styles.tickerDot} />
-        <Text style={styles.tickerLabelTxt}>LIVE</Text>
+        <Text style={styles.tickerLabelTxt}>+{lastUpdate}</Text>
       </View>
       <View style={styles.tickerTrack}>
         <Animated.Text
@@ -280,6 +281,7 @@ function Section({ category, items }: { category: string; items: NewsItem[] }) {
 
 export default function Index() {
   const insets = useSafeAreaInsets()
+  const router = useRouter()
   const [news, setNews] = useState<NewsItem[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
@@ -359,13 +361,10 @@ export default function Index() {
           <View style={styles.logoMark}>
             <Text style={styles.logoMarkTxt}>◈</Text>
           </View>
-          <View>
-            <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 2 }}>
-              <Text style={styles.logoAI}>AI</Text>
-              <Text style={styles.logoSlash}>/</Text>
-              <Text style={styles.logoNEWS}>NEWS</Text>
-            </View>
-            <Text style={styles.logoSub}>INTELLIGENCE ARTIFICIELLE · {String(news.length).padStart(3,'0')} SIGNAUX</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 2 }}>
+            <Text style={styles.logoAI}>AI</Text>
+            <Text style={styles.logoSlash}>/</Text>
+            <Text style={styles.logoNEWS}>NEWS</Text>
           </View>
           <TouchableOpacity onPress={() => router.push('/archive')} style={styles.archiveBtn}>
             <Text style={styles.archiveBtnTxt}>ARCHIVE ›</Text>
@@ -424,7 +423,6 @@ const styles = StyleSheet.create({
   logoAI:     { color: '#ffffff', fontSize: 26, fontWeight: '900', letterSpacing: 2 },
   logoSlash:  { color: '#00e5ff', fontSize: 22, fontWeight: '300', opacity: 0.6 },
   logoNEWS:   { color: '#00e5ff', fontSize: 26, fontWeight: '900', letterSpacing: 2 },
-  logoSub:    { color: '#2a4060', fontSize: 8, letterSpacing: 1.2, fontWeight: '600', marginTop: 1 },
   archiveBtn:    { marginLeft: 'auto', borderWidth: 1, borderColor: 'rgba(0,229,255,0.25)', borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4 },
   archiveBtnTxt: { color: '#00e5ff', fontSize: 9, fontWeight: '900', letterSpacing: 1.2 },
 
