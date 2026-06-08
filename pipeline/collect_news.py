@@ -1,4 +1,5 @@
 import calendar
+import hashlib
 import json
 import os
 import sys
@@ -207,8 +208,14 @@ def load_context(db: Client) -> dict:
 def _build_prompt(articles: list[dict], context: dict) -> str:
     recent_titles   = context.get("recent_titles", [])
     category_counts = context.get("category_counts", {})
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=48)).strftime("%Y-%m-%d")
 
     lines = [
+        f"Date du jour : {today}.",
+        f"RÈGLE ABSOLUE : ne sélectionne QUE des articles publiés après le {cutoff} (48h max).",
+        "Si un article parle d'un outil/modèle existant sans annonce récente, l'ignorer.",
+        "",
         "Tu es un expert en IA/ML. Analyse ces articles et sélectionne les 5 à 8 MEILLEURS représentant "
         "le signal technique le plus fort (nouveaux modèles, frameworks, papiers de recherche). "
         "Ignore le marketing sans substance. Qualité > quantité.",
@@ -323,7 +330,9 @@ def upsert(collection: NewsCollection, db: Client) -> int:
             logger.warning("Skipped invalid category '%s': %s", item.category, item.title[:50])
             continue
 
+        content_hash = hashlib.sha256(item.source_url.encode()).hexdigest()[:32]
         row = {
+            "content_hash":     content_hash,
             "title":            item.title,
             "category":         item.category,
             "summary":          item.summary,
@@ -331,6 +340,7 @@ def upsert(collection: NewsCollection, db: Client) -> int:
             "source_url":       item.source_url,
             "importance_score": item.importance_score,
             "urgent":           item.importance_score >= 9,
+            "archived":         False,
         }
 
         if _upsert_row(db, row):
@@ -339,6 +349,70 @@ def upsert(collection: NewsCollection, db: Client) -> int:
             logger.info("[%d/10] %s %s", item.importance_score, item.title[:60], flag)
 
     return inserted
+
+
+# ── Archivage automatique ─────────────────────────────────────────────────────
+
+def remove_duplicates(db: Client) -> int:
+    """Supprime les doublons par source_url — garde le plus récent."""
+    try:
+        all_rows = db.table("ai_news").select("id, source_url, created_at").execute()
+        seen: dict[str, tuple[str, str]] = {}  # url → (id, created_at)
+        to_delete: list[str] = []
+
+        for row in (all_rows.data or []):
+            url = row["source_url"]
+            if url in seen:
+                existing_id, existing_date = seen[url]
+                if row["created_at"] > existing_date:
+                    to_delete.append(existing_id)
+                    seen[url] = (row["id"], row["created_at"])
+                else:
+                    to_delete.append(row["id"])
+            else:
+                seen[url] = (row["id"], row["created_at"])
+
+        for dup_id in to_delete:
+            db.table("ai_news").delete().eq("id", dup_id).execute()
+
+        return len(to_delete)
+    except Exception as exc:
+        logger.warning("remove_duplicates failed: %s", exc)
+        return 0
+
+
+def archive_old_articles(db: Client) -> int:
+    """Archive les articles selon leur ancienneté et leur importance."""
+    now = datetime.now(timezone.utc)
+    archived = 0
+
+    rules = [
+        # (importance_min, importance_max_excl, délai)
+        (0, 7,  timedelta(days=3)),   # score 1-6  → archivé après 3 jours
+        (7, 9,  timedelta(days=7)),   # score 7-8  → archivé après 7 jours
+        (9, 11, timedelta(days=21)),  # score 9-10 → archivé après 21 jours
+    ]
+
+    for score_min, score_max, max_age in rules:
+        cutoff = (now - max_age).isoformat()
+        try:
+            result = (
+                db.table("ai_news")
+                .update({"archived": True})
+                .eq("archived", False)
+                .lt("created_at", cutoff)
+                .gte("importance_score", score_min)
+                .lt("importance_score", score_max)
+                .execute()
+            )
+            count = len(result.data or [])
+            archived += count
+            if count:
+                logger.info("Archivé %d articles (score %d-%d, > %s)", count, score_min, score_max - 1, max_age)
+        except Exception as exc:
+            logger.warning("Archive rule [%d-%d] failed: %s", score_min, score_max, exc)
+
+    return archived
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
@@ -378,6 +452,13 @@ def main() -> None:
 
     count = upsert(collection, db)
     logger.info("=== Pipeline complete: %d/%d items upserted ===", count, len(collection.items))
+
+    archived = archive_old_articles(db)
+    logger.info("Archivage: %d articles archivés", archived)
+
+    dedup_count = remove_duplicates(db)
+    if dedup_count:
+        logger.info("Dédup: %d doublons supprimés", dedup_count)
 
 
 if __name__ == "__main__":

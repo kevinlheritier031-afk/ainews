@@ -62,42 +62,47 @@ function Scanline() {
   )
 }
 
-const MESSAGES = ['SCANNING LIVE FEEDS…', 'FILTERING NOISE…', 'GEMINI RANKING SIGNALS…', 'FLUX SYNCHRONISÉ ✓']
-function TypeWriter({ count }: { count: number }) {
-  const [txt, setTxt] = useState('')
-  const [msgIdx, setMsgIdx] = useState(0)
-  const cursor = useRef(new Animated.Value(1)).current
+function Ticker({ items }: { items: NewsItem[] }) {
+  const tx = useRef(new Animated.Value(SCREEN_W)).current
+  const [contentW, setContentW] = useState(0)
+  const anim = useRef<Animated.CompositeAnimation | null>(null)
+
+  const top = items.filter(i => (i.importance_score ?? 0) >= 7).slice(0, 8)
+  const text = top.length > 0
+    ? top.map(i => `◈ ${i.title}`).join('     ·     ')
+    : '◈ SCANNING LIVE FEEDS…     ·     ◈ GEMINI RANKING SIGNALS…'
 
   useEffect(() => {
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(cursor, { toValue: 0, duration: 500, useNativeDriver: true }),
-        Animated.timing(cursor, { toValue: 1, duration: 500, useNativeDriver: true }),
-      ])
-    ).start()
-  }, [])
-
-  useEffect(() => {
-    const msg = MESSAGES[msgIdx]
-    let i = 0
-    setTxt('')
-    const iv = setInterval(() => {
-      i++
-      setTxt(msg.slice(0, i))
-      if (i >= msg.length) {
-        clearInterval(iv)
-        setTimeout(() => setMsgIdx(x => (x + 1) % MESSAGES.length), 2800)
-      }
-    }, 32)
-    return () => clearInterval(iv)
-  }, [msgIdx])
+    if (contentW === 0) return
+    anim.current?.stop()
+    tx.setValue(SCREEN_W)
+    anim.current = Animated.loop(
+      Animated.timing(tx, {
+        toValue: -contentW,
+        duration: (contentW + SCREEN_W) * 30,
+        useNativeDriver: true,
+      })
+    )
+    anim.current.start()
+    return () => anim.current?.stop()
+  }, [contentW, text])
 
   return (
-    <View style={styles.twRow}>
-      <Text style={styles.twPrompt}>› </Text>
-      <Text style={styles.twText}>{txt}</Text>
-      <Animated.Text style={[styles.twCursor, { opacity: cursor }]}>▌</Animated.Text>
-      <Text style={styles.twCount}> [{String(count).padStart(3, '0')} signaux]</Text>
+    <View style={styles.tickerBar}>
+      <LinearGradient colors={['#0c1830', 'transparent']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.tickerFadeL} pointerEvents="none" />
+      <View style={styles.tickerLabel}>
+        <View style={styles.tickerDot} />
+        <Text style={styles.tickerLabelTxt}>LIVE</Text>
+      </View>
+      <View style={styles.tickerTrack}>
+        <Animated.Text
+          style={[styles.tickerText, { transform: [{ translateX: tx }] }]}
+          onLayout={e => setContentW(e.nativeEvent.layout.width)}
+          numberOfLines={1}
+        >
+          {text}
+        </Animated.Text>
+      </View>
     </View>
   )
 }
@@ -285,6 +290,7 @@ export default function Index() {
     const { data } = await supabase
       .from('ai_news')
       .select('id, title, category, summary, source_url, created_at, importance_score, urgent')
+      .eq('archived', false)
       .order('importance_score', { ascending: false, nullsFirst: false })
       .order('created_at', { ascending: false })
       .limit(40)
@@ -350,11 +356,22 @@ export default function Index() {
         style={[styles.header, { paddingTop: insets.top + 10 }]}
       >
         <View style={styles.logoRow}>
-          <Text style={styles.logoIcon}>◈</Text>
-          <Text style={styles.logoText}>AI NEWS</Text>
-          <Text style={styles.logoSub}>  INTELLIGENCE ARTIFICIELLE</Text>
+          <View style={styles.logoMark}>
+            <Text style={styles.logoMarkTxt}>◈</Text>
+          </View>
+          <View>
+            <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 2 }}>
+              <Text style={styles.logoAI}>AI</Text>
+              <Text style={styles.logoSlash}>/</Text>
+              <Text style={styles.logoNEWS}>NEWS</Text>
+            </View>
+            <Text style={styles.logoSub}>INTELLIGENCE ARTIFICIELLE · {String(news.length).padStart(3,'0')} SIGNAUX</Text>
+          </View>
+          <TouchableOpacity onPress={() => router.push('/archive')} style={styles.archiveBtn}>
+            <Text style={styles.archiveBtnTxt}>ARCHIVE ›</Text>
+          </TouchableOpacity>
         </View>
-        <TypeWriter count={news.length} />
+        <Ticker items={news} />
         <View style={styles.circuitBar}>
           <View style={[styles.circuitDot, { backgroundColor: '#00e5ff' }]} />
           <View style={styles.circuitLine} />
@@ -401,16 +418,23 @@ const styles = StyleSheet.create({
 
   header: { paddingHorizontal: 18, paddingBottom: 14 },
 
-  logoRow:  { flexDirection: 'row', alignItems: 'baseline', marginBottom: 12 },
-  logoIcon: { color: '#00e5ff', fontSize: 18, marginRight: 8 },
-  logoText: { color: '#ffffff', fontSize: 24, fontWeight: '900', letterSpacing: 4 },
-  logoSub:  { color: '#2a4060', fontSize: 9, letterSpacing: 1.5, fontWeight: '600' },
+  logoRow:    { flexDirection: 'row', alignItems: 'center', marginBottom: 10, gap: 10 },
+  logoMark:   { width: 32, height: 32, borderRadius: 8, backgroundColor: 'rgba(0,229,255,0.12)', borderWidth: 1, borderColor: 'rgba(0,229,255,0.3)', alignItems: 'center', justifyContent: 'center' },
+  logoMarkTxt:{ color: '#00e5ff', fontSize: 14, fontWeight: '900' },
+  logoAI:     { color: '#ffffff', fontSize: 26, fontWeight: '900', letterSpacing: 2 },
+  logoSlash:  { color: '#00e5ff', fontSize: 22, fontWeight: '300', opacity: 0.6 },
+  logoNEWS:   { color: '#00e5ff', fontSize: 26, fontWeight: '900', letterSpacing: 2 },
+  logoSub:    { color: '#2a4060', fontSize: 8, letterSpacing: 1.2, fontWeight: '600', marginTop: 1 },
+  archiveBtn:    { marginLeft: 'auto', borderWidth: 1, borderColor: 'rgba(0,229,255,0.25)', borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4 },
+  archiveBtnTxt: { color: '#00e5ff', fontSize: 9, fontWeight: '900', letterSpacing: 1.2 },
 
-  twRow:    { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
-  twPrompt: { color: '#00e5ff', fontSize: 12, fontWeight: '700' },
-  twText:   { color: '#4a7080', fontSize: 12, letterSpacing: 0.3 },
-  twCursor: { color: '#00e5ff', fontSize: 12 },
-  twCount:  { color: '#253545', fontSize: 11, letterSpacing: 0.5 },
+  tickerBar:    { flexDirection: 'row', alignItems: 'center', marginBottom: 10, height: 28, backgroundColor: 'rgba(0,229,255,0.04)', borderRadius: 6, borderWidth: 1, borderColor: 'rgba(0,229,255,0.08)', overflow: 'hidden' },
+  tickerLabel:  { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, borderRightWidth: 1, borderRightColor: 'rgba(0,229,255,0.12)', height: '100%' },
+  tickerDot:    { width: 5, height: 5, borderRadius: 3, backgroundColor: '#00e5ff' },
+  tickerLabelTxt:{ color: '#00e5ff', fontSize: 8, fontWeight: '900', letterSpacing: 1.5 },
+  tickerTrack:  { flex: 1, overflow: 'hidden', height: '100%', justifyContent: 'center' },
+  tickerText:   { color: '#4a7080', fontSize: 11, letterSpacing: 0.3, paddingLeft: 10, whiteSpace: 'nowrap' } as any,
+  tickerFadeL:  { position: 'absolute', left: 0, top: 0, bottom: 0, width: 40, zIndex: 1 },
 
   circuitBar:  { flexDirection: 'row', alignItems: 'center' },
   circuitDot:  { width: 5, height: 5, borderRadius: 3 },
