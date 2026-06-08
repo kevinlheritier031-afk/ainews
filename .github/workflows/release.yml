@@ -44,12 +44,10 @@ jobs:
 
       - name: Write gradle.properties signing config
         run: |
-          cat >> mobile/android/gradle.properties << EOF
-          AINEWS_KEYSTORE_FILE=ainews.keystore
-          AINEWS_KEY_ALIAS=ainews
-          AINEWS_STORE_PASSWORD=${{ secrets.ANDROID_STORE_PASSWORD }}
-          AINEWS_KEY_PASSWORD=${{ secrets.ANDROID_KEY_PASSWORD }}
-          EOF
+          echo "AINEWS_KEYSTORE_FILE=ainews.keystore" >> mobile/android/gradle.properties
+          echo "AINEWS_KEY_ALIAS=ainews" >> mobile/android/gradle.properties
+          echo "AINEWS_STORE_PASSWORD=${{ secrets.ANDROID_STORE_PASSWORD }}" >> mobile/android/gradle.properties
+          echo "AINEWS_KEY_PASSWORD=${{ secrets.ANDROID_KEY_PASSWORD }}" >> mobile/android/gradle.properties
 
       - name: Build release APK
         working-directory: mobile/android
