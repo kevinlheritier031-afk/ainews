@@ -1,150 +1,107 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import {
-  Animated,
-  FlatList,
-  RefreshControl,
-  StyleSheet,
-  Text,
-  View,
+  View, Text, FlatList, TouchableOpacity, StyleSheet,
+  ActivityIndicator, Linking, RefreshControl,
 } from 'react-native'
-import { BlurView } from 'expo-blur'
-import { supabase } from '../lib/supabase'
-import type { NewsItem } from '../types/news'
-import { NewsCard } from '../components/NewsCard'
-import { EmptyState } from '../components/EmptyState'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import { createClient } from '@supabase/supabase-js'
 
-type FetchState = 'loading' | 'idle' | 'refreshing' | 'error'
+const supabase = createClient(
+  process.env.EXPO_PUBLIC_SUPABASE_URL!,
+  process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!,
+)
 
-const HEADER_H = 56
+type NewsItem = {
+  id: string
+  title: string
+  category: string
+  summary: string
+  source_url: string
+  created_at: string
+}
 
-function todayLabel(): string {
-  return new Date().toLocaleDateString('fr-FR', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-  })
+const CATEGORY_COLORS: Record<string, string> = {
+  'Modèle':    '#7c3aed',
+  'Framework': '#0ea5e9',
+  'Recherche': '#059669',
 }
 
 export default function Index() {
-  const [news, setNews]   = useState<NewsItem[]>([])
-  const [state, setState] = useState<FetchState>('loading')
-  const scrollY           = useRef(new Animated.Value(0)).current
+  const insets = useSafeAreaInsets()
+  const [news, setNews] = useState<NewsItem[]>([])
+  const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
 
-  const blurOpacity = scrollY.interpolate({
-    inputRange: [0, 40],
-    outputRange: [0, 1],
-    extrapolate: 'clamp',
-  })
+  async function fetchNews() {
+    const { data } = await supabase
+      .from('ai_news')
+      .select('id, title, category, summary, source_url, created_at')
+      .order('created_at', { ascending: false })
+      .limit(50)
+    if (data) setNews(data)
+  }
 
-  const fetchNews = useCallback(async (refresh = false) => {
-    setState(refresh ? 'refreshing' : 'loading')
-    try {
-      const { data, error } = await supabase
-        .from('ai_news')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(50)
-      if (error) throw error
-      setNews((data as NewsItem[]) ?? [])
-      setState('idle')
-    } catch {
-      setState('error')
-    }
+  useEffect(() => {
+    fetchNews().finally(() => setLoading(false))
   }, [])
 
-  useEffect(() => { fetchNews() }, [fetchNews])
+  async function onRefresh() {
+    setRefreshing(true)
+    await fetchNews()
+    setRefreshing(false)
+  }
 
-  const renderItem = useCallback(
-    ({ item, index }: { item: NewsItem; index: number }) => (
-      <NewsCard item={item} index={index} />
-    ),
-    []
-  )
-
-  const isLoading = state === 'loading'
-  const isError   = state === 'error'
-  const isEmpty   = state === 'idle' && news.length === 0
+  if (loading) {
+    return (
+      <View style={styles.centered}>
+        <ActivityIndicator size="large" color="#7c3aed" />
+      </View>
+    )
+  }
 
   return (
     <View style={styles.root}>
-      <View style={styles.header}>
-        <Animated.View
-          style={[StyleSheet.absoluteFillObject, { opacity: blurOpacity }]}
-          pointerEvents="none"
-        >
-          <BlurView intensity={40} tint="dark" style={StyleSheet.absoluteFillObject} />
-          <View style={[StyleSheet.absoluteFillObject, styles.blurOverlay]} />
-        </Animated.View>
-        <Text style={styles.headerTitle}>ai/news</Text>
-        <Text style={styles.headerDate}>{todayLabel()}</Text>
+      <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
+        <Text style={styles.headerTitle}>AI News</Text>
+        <Text style={styles.headerSub}>{news.length} articles</Text>
       </View>
-
-      {isLoading ? (
-        <EmptyState state="loading" />
-      ) : isError ? (
-        <EmptyState state="error" onRetry={() => fetchNews()} />
-      ) : isEmpty ? (
-        <EmptyState state="empty" />
-      ) : (
-        <Animated.FlatList
-          data={news}
-          renderItem={renderItem}
-          keyExtractor={(item: NewsItem) => item.id}
-          contentContainerStyle={styles.list}
-          onScroll={Animated.event(
-            [{ nativeEvent: { contentOffset: { y: scrollY } } }],
-            { useNativeDriver: true }
-          )}
-          scrollEventThrottle={16}
-          showsVerticalScrollIndicator={false}
-          refreshControl={
-            <RefreshControl
-              refreshing={state === 'refreshing'}
-              onRefresh={() => fetchNews(true)}
-              tintColor="#6366f1"
-              colors={['#6366f1']}
-              progressBackgroundColor="#111111"
-            />
-          }
-        />
-      )}
+      <FlatList
+        data={news}
+        keyExtractor={item => item.id}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#7c3aed" />
+        }
+        renderItem={({ item }) => (
+          <TouchableOpacity
+            style={styles.card}
+            onPress={() => Linking.openURL(item.source_url)}
+            activeOpacity={0.7}
+          >
+            <View style={[styles.badge, { backgroundColor: CATEGORY_COLORS[item.category] ?? '#444' }]}>
+              <Text style={styles.badgeText}>{item.category}</Text>
+            </View>
+            <Text style={styles.title}>{item.title}</Text>
+            <Text style={styles.summary}>{item.summary}</Text>
+          </TouchableOpacity>
+        )}
+        contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + 16 }]}
+        ListEmptyComponent={<Text style={styles.empty}>Aucune news pour l'instant.</Text>}
+      />
     </View>
   )
 }
 
 const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: '#0a0a0a',
-  },
-  header: {
-    height: HEADER_H,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.06)',
-    zIndex: 10,
-  },
-  blurOverlay: {
-    backgroundColor: 'rgba(10,10,10,0.75)',
-  },
-  headerTitle: {
-    fontFamily: 'monospace',
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#ffffff',
-    letterSpacing: 0.5,
-  },
-  headerDate: {
-    fontFamily: 'monospace',
-    fontSize: 11,
-    color: '#737373',
-    letterSpacing: 0.3,
-  },
-  list: {
-    padding: 12,
-    paddingTop: 8,
-  },
+  root:        { flex: 1, backgroundColor: '#0a0a0a' },
+  centered:    { flex: 1, backgroundColor: '#0a0a0a', justifyContent: 'center', alignItems: 'center' },
+  header:      { paddingBottom: 14, paddingHorizontal: 16, borderBottomWidth: 1, borderBottomColor: '#1c1c1c' },
+  headerTitle: { color: '#ffffff', fontSize: 26, fontWeight: '700', letterSpacing: -0.5 },
+  headerSub:   { color: '#555', fontSize: 12, marginTop: 2 },
+  list:        { padding: 12, gap: 10 },
+  card:        { backgroundColor: '#111', borderRadius: 14, padding: 16, borderWidth: 1, borderColor: '#1e1e1e' },
+  badge:       { alignSelf: 'flex-start', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3, marginBottom: 10 },
+  badgeText:   { color: '#fff', fontSize: 10, fontWeight: '700', letterSpacing: 0.5 },
+  title:       { color: '#f0f0f0', fontSize: 15, fontWeight: '600', lineHeight: 22, marginBottom: 6 },
+  summary:     { color: '#888', fontSize: 13, lineHeight: 20 },
+  empty:       { color: '#555', textAlign: 'center', marginTop: 60, fontSize: 15 },
 })
