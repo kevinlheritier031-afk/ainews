@@ -19,3 +19,6 @@ local.properties
 app/ainews.keystore
 app/ainews.keystore.b64
 gradle.properties
+
+# Firebase config (ajouté via secret GitHub)
+app/google-services.json

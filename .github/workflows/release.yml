@@ -39,6 +39,9 @@ jobs:
         run: |
           echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > mobile/android/app/ainews.keystore
 
+      - name: Write google-services.json
+        run: echo '${{ secrets.GOOGLE_SERVICES_JSON }}' > mobile/android/app/google-services.json
+
       - name: Write gradle.properties signing config
         run: |
           cat >> mobile/android/gradle.properties << EOF
