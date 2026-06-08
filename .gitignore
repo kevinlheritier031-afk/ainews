@@ -1,6 +1,7 @@
 # Env files with secrets
 .env
 !.env.example
+pipeline/firebase-adminsdk.json
 
 # Python
 __pycache__/

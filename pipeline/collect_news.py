@@ -396,18 +396,42 @@ def upsert(collection: NewsCollection, db: Client) -> int:
     return inserted
 
 
-# ── Push notifications ────────────────────────────────────────────────────────
+# ── Push notifications Firebase ───────────────────────────────────────────────
+
+_firebase_app = None
+
+def _get_firebase():
+    global _firebase_app
+    if _firebase_app is not None:
+        return _firebase_app
+    sdk_path = os.path.join(os.path.dirname(__file__), "firebase-adminsdk.json")
+    if not os.path.exists(sdk_path):
+        logger.warning("firebase-adminsdk.json introuvable — push désactivé")
+        return None
+    import firebase_admin
+    from firebase_admin import credentials
+    cred = credentials.Certificate(sdk_path)
+    _firebase_app = firebase_admin.initialize_app(cred)
+    return _firebase_app
+
 
 def send_push(inserted_items: list[NewsItem], db: Client) -> None:
-    """Envoie une notification push si des articles importants ont été insérés."""
+    """Envoie une notification push FCM pour les articles importants."""
     notable = [i for i in inserted_items if i.importance_score >= 8]
     if not notable:
         return
 
+    if _get_firebase() is None:
+        return
+
     try:
+        import firebase_admin
+        from firebase_admin import messaging
+
         tokens_res = db.table("push_tokens").select("token").execute()
         tokens = [r["token"] for r in (tokens_res.data or [])]
         if not tokens:
+            logger.info("Aucun token push enregistré")
             return
 
         top = notable[0]
@@ -420,31 +444,25 @@ def send_push(inserted_items: list[NewsItem], db: Client) -> None:
         else:
             title = "◈ AI NEWS"
 
-        if len(notable) == 1:
-            body = top.title
-        else:
-            body = f"{len(notable)} nouveaux signaux — {top.title[:70]}"
+        body = top.title if len(notable) == 1 else f"{len(notable)} nouveaux signaux — {top.title[:70]}"
 
-        messages = [
-            {
-                "to": token,
-                "title": title,
-                "body": body,
-                "sound": "default",
-                "priority": "high" if score >= 9 else "normal",
-                "channelId": "ainews-alerts",
-                "data": {"source_url": top.source_url, "category": top.category},
-            }
-            for token in tokens
-        ]
-
-        resp = requests.post(
-            "https://exp.host/--/api/v2/push/send",
-            json=messages,
-            headers={"Accept": "application/json", "Content-Type": "application/json"},
-            timeout=10,
+        message = messaging.MulticastMessage(
+            tokens=tokens,
+            notification=messaging.Notification(title=title, body=body),
+            android=messaging.AndroidConfig(
+                priority="high" if score >= 9 else "normal",
+                notification=messaging.AndroidNotification(
+                    channel_id="ainews-alerts",
+                    color="#00e5ff",
+                    sound="default",
+                ),
+            ),
+            data={"source_url": top.source_url, "category": top.category},
         )
-        logger.info("Push envoyé à %d token(s) — %s : %s", len(tokens), title, body[:60])
+
+        response = messaging.send_each_for_multicast(message)
+        logger.info("Push FCM — %d envoyés, %d erreurs — %s : %s",
+                    response.success_count, response.failure_count, title, body[:60])
     except Exception as exc:
         logger.warning("Push notification failed: %s", exc)
 
