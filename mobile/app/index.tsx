@@ -93,7 +93,7 @@ function Ticker({ items }: { items: NewsItem[] }) {
     <View style={styles.tickerBar}>
       <View style={styles.tickerLabel}>
         <View style={styles.tickerDot} />
-        <Text style={styles.tickerLabelTxt}>+{lastUpdate}</Text>
+        <Text style={styles.tickerLabelTxt}>LIVE</Text>
       </View>
       <View style={styles.tickerTrack}>
         <Animated.Text

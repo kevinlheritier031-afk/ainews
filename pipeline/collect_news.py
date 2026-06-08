@@ -3,6 +3,7 @@ import hashlib
 import json
 import os
 import sys
+import time
 import logging
 from datetime import datetime, timezone, timedelta
 from typing import Optional
@@ -270,6 +271,9 @@ def _build_prompt(articles: list[dict], context: dict) -> str:
     return "\n".join(lines)
 
 
+_MODELS = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
+
+
 def analyze(articles: list[dict], context: dict) -> Optional[NewsCollection]:
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
@@ -277,25 +281,39 @@ def analyze(articles: list[dict], context: dict) -> Optional[NewsCollection]:
         return None
 
     client = genai.Client(api_key=api_key)
-    try:
-        response = client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=_build_prompt(articles, context),
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json",
-                response_schema=NewsCollection,
-                temperature=0.2,
-                max_output_tokens=32768,
-            ),
-        )
-        collection: NewsCollection = response.parsed
-        if collection is None:
-            collection = NewsCollection(**json.loads(response.text))
-        logger.info("Gemini: %d items returned", len(collection.items))
-        return collection
-    except Exception as exc:
-        logger.error("Gemini error: %s", exc)
-        return None
+    prompt = _build_prompt(articles, context)
+
+    for model in _MODELS:
+        for attempt in range(2):
+            try:
+                response = client.models.generate_content(
+                    model=model,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        response_mime_type="application/json",
+                        response_schema=NewsCollection,
+                        temperature=0.2,
+                        max_output_tokens=32768,
+                    ),
+                )
+                collection: NewsCollection = response.parsed
+                if collection is None:
+                    collection = NewsCollection(**json.loads(response.text))
+                logger.info("Gemini [%s]: %d items returned", model, len(collection.items))
+                return collection
+            except Exception as exc:
+                err = str(exc)
+                if "503" in err or "UNAVAILABLE" in err or "429" in err:
+                    wait = 20 if attempt == 0 else 0
+                    logger.warning("[%s] attempt %d indisponible — %s", model, attempt + 1, "retry dans 20s" if wait else "modèle suivant")
+                    if wait:
+                        time.sleep(wait)
+                    continue
+                logger.error("Gemini [%s] erreur: %s", model, exc)
+                break  # erreur non-récupérable, passe au modèle suivant
+
+    logger.error("Tous les modèles Gemini ont échoué")
+    return None
 
 
 # ── Supabase ──────────────────────────────────────────────────────────────────
