@@ -125,12 +125,13 @@ function SignalBars({ score, color }: { score: number; color: string }) {
   )
 }
 
-// ── Carte article ─────────────────────────────────────────────────────────────
+// ── Carte article expansible ──────────────────────────────────────────────────
 function Card({ item, index }: { item: NewsItem; index: number }) {
-  const opacity = useRef(new Animated.Value(0)).current
-  const tx      = useRef(new Animated.Value(30)).current
-  const sig     = getSignal(item.category)
-  const hot     = (item.importance_score ?? 0) >= 8
+  const opacity  = useRef(new Animated.Value(0)).current
+  const tx       = useRef(new Animated.Value(30)).current
+  const [expanded, setExpanded] = useState(false)
+  const sig = getSignal(item.category)
+  const hot = (item.importance_score ?? 0) >= 8
 
   useEffect(() => {
     Animated.parallel([
@@ -141,11 +142,8 @@ function Card({ item, index }: { item: NewsItem; index: number }) {
 
   return (
     <Animated.View style={{ opacity, transform: [{ translateX: tx }] }}>
-      <TouchableOpacity
-        onPress={() => Linking.openURL(item.source_url)}
-        activeOpacity={0.82}
-        style={[styles.card, { borderLeftColor: sig.color, backgroundColor: sig.dim }]}
-      >
+      <View style={[styles.card, { borderLeftColor: sig.color, backgroundColor: sig.dim }]}>
+
         {/* Ligne supérieure */}
         <View style={styles.cardHead}>
           <View style={[styles.tagBox, { borderColor: sig.color + '60' }]}>
@@ -159,20 +157,35 @@ function Card({ item, index }: { item: NewsItem; index: number }) {
           <Text style={styles.cardTime}>{timeAgo(item.created_at)} AGO</Text>
         </View>
 
-        {/* Titre */}
-        <Text style={styles.cardTitle} numberOfLines={3}>{item.title}</Text>
+        {/* Titre — tap pour expand */}
+        <TouchableOpacity onPress={() => setExpanded(e => !e)} activeOpacity={0.8}>
+          <Text style={styles.cardTitle}>{item.title}</Text>
+        </TouchableOpacity>
 
-        {/* Résumé */}
-        <Text style={styles.cardSummary} numberOfLines={3}>{item.summary}</Text>
+        {/* Résumé : 3 lignes ou complet selon état */}
+        <TouchableOpacity onPress={() => setExpanded(e => !e)} activeOpacity={0.8}>
+          <Text
+            style={styles.cardSummary}
+            numberOfLines={expanded ? undefined : 3}
+          >
+            {item.summary}
+          </Text>
+          <Text style={[styles.expandHint, { color: sig.color }]}>
+            {expanded ? '▲ RÉDUIRE' : '▼ LIRE LA SYNTHÈSE COMPLÈTE'}
+          </Text>
+        </TouchableOpacity>
 
         {/* Pied */}
         <View style={styles.cardFoot}>
           {item.importance_score != null
             ? <SignalBars score={item.importance_score} color={sig.color} />
             : <View />}
-          <Text style={[styles.accessBtn, { color: sig.color }]}>ACCESS ›</Text>
+          <TouchableOpacity onPress={() => Linking.openURL(item.source_url)}>
+            <Text style={[styles.accessBtn, { color: sig.color + '99' }]}>SOURCE ›</Text>
+          </TouchableOpacity>
         </View>
-      </TouchableOpacity>
+
+      </View>
     </Animated.View>
   )
 }
@@ -371,7 +384,8 @@ const styles = StyleSheet.create({
   cardTitle:   { color: '#c8d8e8', fontSize: 13, fontWeight: '700', lineHeight: 20, marginBottom: 8, letterSpacing: 0.2 },
   cardSummary: { color: '#304050', fontSize: 11, lineHeight: 17, marginBottom: 10 },
 
-  cardFoot:    { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  expandHint:  { fontSize: 9, fontWeight: '800', letterSpacing: 1.5, marginTop: 6, marginBottom: 4 },
+  cardFoot:    { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 },
   barsRow:     { flexDirection: 'row', gap: 3, alignItems: 'flex-end' },
   accessBtn:   { fontSize: 10, fontWeight: '900', letterSpacing: 1.5 },
 

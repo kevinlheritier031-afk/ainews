@@ -39,8 +39,8 @@ logger.setLevel(logging.INFO)
 class NewsItem(BaseModel):
     title: str
     category: str           # "Modèle" | "Framework" | "Recherche"
-    summary: str            # 2 phrases max, denses et techniques, en français
-    code_example: str       # snippet Python/bash en markdown
+    summary: str            # Résumé complet EN FRANÇAIS UNIQUEMENT : 6-10 phrases couvrant ce que c'est, pourquoi c'est important, détails techniques, impact écosystème
+    code_example: str       # snippet Python/bash en markdown (réel et fonctionnel)
     source_url: str
     importance_score: int   # 1-10 : pertinence et impact dans l'écosystème IA
 
@@ -157,10 +157,17 @@ def _build_prompt(articles: list[dict]) -> str:
         "Ignore le marketing sans substance et les doublons.",
         "",
         "Pour chaque article sélectionné, génère :",
-        "- title: titre concis et technique (en français si possible)",
+        "- title: titre concis et technique EN FRANÇAIS",
         "- category: exactement 'Modèle', 'Framework' ou 'Recherche'",
-        "- summary: 2 phrases max, denses et techniques, en français",
-        "- code_example: snippet Python ou bash RÉEL en markdown (```python ou ```bash)",
+        "- summary: RÉSUMÉ COMPLET EN FRANÇAIS UNIQUEMENT (jamais en anglais). 6 à 10 phrases",
+        "  couvrant dans l'ordre :",
+        "  1. Ce que c'est exactement (nature de l'annonce/découverte)",
+        "  2. Le contexte et pourquoi c'est notable",
+        "  3. Les détails techniques clés (architecture, performances, benchmarks...)",
+        "  4. Ce que ça change concrètement pour les développeurs / chercheurs",
+        "  5. L'impact potentiel sur l'écosystème IA",
+        "  Le lecteur doit pouvoir TOUT comprendre sans lire l'article original.",
+        "- code_example: snippet Python ou bash RÉEL et fonctionnel en markdown",
         "- source_url: URL originale de l'article",
         "- importance_score: entier 1 à 10 selon l'impact réel dans l'écosystème IA :",
         "    10 = percée majeure (GPT-4, AlphaFold, nouveau modèle frontier)",
