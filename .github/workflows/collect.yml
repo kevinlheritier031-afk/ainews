@@ -24,6 +24,9 @@ jobs:
       - name: Install dependencies
         run: pip install -r pipeline/requirements.txt
 
+      - name: Write Firebase service account key
+        run: echo '${{ secrets.FIREBASE_ADMINSDK_JSON }}' > pipeline/firebase-adminsdk.json
+
       - name: Run pipeline
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
