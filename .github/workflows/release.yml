@@ -11,6 +11,8 @@ jobs:
   build-release:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    permissions:
+      contents: write
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
@@ -44,12 +46,12 @@ jobs:
 
       - name: Build release APK
         working-directory: mobile/android
-        run: |
-          ./gradlew assembleRelease \
-            -PAINEWS_KEYSTORE_FILE=ainews.keystore \
-            -PAINEWS_KEY_ALIAS=ainews \
-            -PAINEWS_STORE_PASSWORD="${{ secrets.ANDROID_STORE_PASSWORD }}" \
-            -PAINEWS_KEY_PASSWORD="${{ secrets.ANDROID_KEY_PASSWORD }}"
+        env:
+          AINEWS_KEYSTORE_FILE: ainews.keystore
+          AINEWS_KEY_ALIAS: ainews
+          AINEWS_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          AINEWS_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: ./gradlew assembleRelease
 
       - name: Get version
         id: version

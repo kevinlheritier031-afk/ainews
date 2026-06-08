@@ -104,10 +104,10 @@ android {
             keyPassword 'android'
         }
         release {
-            storeFile file(AINEWS_KEYSTORE_FILE)
-            storePassword AINEWS_STORE_PASSWORD
-            keyAlias AINEWS_KEY_ALIAS
-            keyPassword AINEWS_KEY_PASSWORD
+            storeFile file(System.getenv("AINEWS_KEYSTORE_FILE") ?: findProperty("AINEWS_KEYSTORE_FILE") ?: "ainews.keystore")
+            storePassword System.getenv("AINEWS_STORE_PASSWORD") ?: findProperty("AINEWS_STORE_PASSWORD") ?: ""
+            keyAlias System.getenv("AINEWS_KEY_ALIAS") ?: findProperty("AINEWS_KEY_ALIAS") ?: "ainews"
+            keyPassword System.getenv("AINEWS_KEY_PASSWORD") ?: findProperty("AINEWS_KEY_PASSWORD") ?: ""
         }
     }
     buildTypes {
