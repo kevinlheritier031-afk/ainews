@@ -46,8 +46,13 @@ function timeAgo(iso: string) {
   const h = Math.floor(d / 3600000)
   const m = Math.floor(d / 60000)
   if (h >= 24) return `${Math.floor(h / 24)}j`
-  if (h >= 1)  return `${h}h`
+  if (h >= 1)  return `${h}h${Math.floor((d % 3600000) / 60000)}m`
+  if (m < 1)   return 'à l\'instant'
   return `${m}m`
+}
+
+function isNew(iso: string) {
+  return Date.now() - new Date(iso).getTime() < 2 * 60 * 60 * 1000
 }
 
 function pushDetail(router: ReturnType<typeof useRouter>, item: NewsItem) {
@@ -234,7 +239,9 @@ function HeroCard({
 
           <View style={styles.heroTop}>
             <View style={[styles.heroBadge, { borderColor: sig.color + '66', backgroundColor: sig.color + '18' }]}>
-              <Text style={[styles.heroBadgeTxt, { color: sig.color }]}>◈ SIGNAL #1</Text>
+              <Text style={[styles.heroBadgeTxt, { color: sig.color }]}>
+                {isNew(item.created_at) ? '◉ NOUVEAU' : '◈ SIGNAL #1'}
+              </Text>
             </View>
             {item.urgent && (
               <View style={styles.priorityBadge}>
@@ -301,7 +308,8 @@ function CompactCard({
             <View style={[styles.tagBox, { borderColor: sig.color + '55', backgroundColor: sig.color + '12' }]}>
               <Text style={[styles.tagTxt, { color: sig.color }]}>{sig.code}</Text>
             </View>
-            {hot && <Text style={styles.hotDot}>◈</Text>}
+            {isNew(item.created_at) && <Text style={styles.newBadge}>◉ NEW</Text>}
+            {hot && !isNew(item.created_at) && <Text style={styles.hotDot}>◈</Text>}
             <Text style={styles.compactTime}>{timeAgo(item.created_at)}</Text>
             <BookmarkBtn isBookmarked={isBookmarked} color={sig.color} onPress={onBookmark} />
           </View>
@@ -358,7 +366,8 @@ function VerticalCard({
             <View style={[styles.tagBox, { borderColor: sig.color + '55', backgroundColor: sig.color + '12' }]}>
               <Text style={[styles.tagTxt, { color: sig.color }]}>{sig.code}</Text>
             </View>
-            {(item.importance_score ?? 0) >= 8 && <Text style={styles.hotDot}>◈</Text>}
+            {isNew(item.created_at) && <Text style={styles.newBadge}>◉ NEW</Text>}
+            {(item.importance_score ?? 0) >= 8 && !isNew(item.created_at) && <Text style={styles.hotDot}>◈</Text>}
             <Text style={styles.compactTime}>{timeAgo(item.created_at)}</Text>
             <BookmarkBtn isBookmarked={isBookmarked} color={sig.color} onPress={onBookmark} />
           </View>
@@ -460,8 +469,8 @@ export default function Index() {
       .select('id, title, category, summary, source_url, created_at, importance_score, urgent')
       .eq('archived', false)
       .gte('created_at', cutoff)
-      .order('importance_score', { ascending: false, nullsFirst: false })
       .order('created_at', { ascending: false })
+      .order('importance_score', { ascending: false, nullsFirst: false })
       .limit(60)
     if (data) setNews(data)
     return data
@@ -767,6 +776,7 @@ const styles = StyleSheet.create({
   tagBox:        { borderWidth: 1, borderRadius: 20, paddingHorizontal: 8, paddingVertical: 3 },
   tagTxt:        { fontSize: 9, fontWeight: '900', letterSpacing: 1.5 },
   hotDot:        { color: '#ff5555', fontSize: 10 },
+  newBadge:      { color: '#00ff88', fontSize: 8, fontWeight: '900', letterSpacing: 1 },
   compactTime:   { marginLeft: 'auto', color: '#3a5060', fontSize: 10, letterSpacing: 0.3 },
 
   compactTitle:   { color: '#d0e4f0', fontSize: 14, fontWeight: '700', lineHeight: 21, marginBottom: 8, letterSpacing: 0.1 },
