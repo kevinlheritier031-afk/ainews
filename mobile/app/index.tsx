@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react'
+import React, { useEffect, useState, useRef, useCallback } from 'react'
 import {
   View, Text, FlatList, TouchableOpacity, StyleSheet,
   ScrollView, RefreshControl, Animated, Dimensions, Modal, Linking,
@@ -35,6 +35,8 @@ const SIG = {
 }
 const DEFAULT_SIG = { code: 'DATA', color: '#667788', dim: 'rgba(100,120,140,0.12)', dimHi: 'rgba(100,120,140,0.22)' }
 
+const CATEGORIES = ['Modèle', 'Framework', 'Recherche'] as const
+
 function getSignal(category: string) {
   return SIG[category as keyof typeof SIG] ?? DEFAULT_SIG
 }
@@ -47,6 +49,23 @@ function timeAgo(iso: string) {
   if (h >= 1)  return `${h}h`
   return `${m}m`
 }
+
+function pushDetail(router: ReturnType<typeof useRouter>, item: NewsItem) {
+  router.push({
+    pathname: '/detail',
+    params: {
+      title: item.title,
+      category: item.category,
+      summary: item.summary,
+      code_example: '',
+      source_url: item.source_url,
+      importance_score: String(item.importance_score ?? 5),
+      created_at: item.created_at,
+    },
+  })
+}
+
+// ── UI atoms ──────────────────────────────────────────────────────────────────
 
 function Scanline() {
   const y = useRef(new Animated.Value(-2)).current
@@ -87,8 +106,6 @@ function Ticker({ items }: { items: NewsItem[] }) {
     return () => anim.current?.stop()
   }, [contentW, text])
 
-  const lastUpdate = items.length > 0 ? timeAgo(items[0].created_at) : '--'
-
   return (
     <View style={styles.tickerBar}>
       <View style={styles.tickerLabel}>
@@ -122,7 +139,76 @@ function SignalBars({ score, color }: { score: number; color: string }) {
   )
 }
 
-function HeroCard({ item }: { item: NewsItem }) {
+function CategoryFilter({
+  active,
+  onSelect,
+  counts,
+}: {
+  active: string | null
+  onSelect: (cat: string | null) => void
+  counts: Record<string, number>
+}) {
+  return (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={styles.filterRow}
+    >
+      <TouchableOpacity
+        onPress={() => onSelect(null)}
+        style={[styles.filterChip, active === null && styles.filterChipAll]}
+      >
+        <Text style={[styles.filterChipTxt, active === null && styles.filterChipTxtAll]}>TOUT</Text>
+      </TouchableOpacity>
+      {CATEGORIES.map(cat => {
+        const sig = getSignal(cat)
+        const isActive = active === cat
+        const count = counts[cat] ?? 0
+        return (
+          <TouchableOpacity
+            key={cat}
+            onPress={() => onSelect(isActive ? null : cat)}
+            style={[
+              styles.filterChip,
+              isActive && { borderColor: sig.color + '88', backgroundColor: sig.color + '18' },
+            ]}
+          >
+            <Text style={[styles.filterChipTxt, isActive && { color: sig.color }]}>
+              {sig.code}
+            </Text>
+            {count > 0 && (
+              <Text style={[styles.filterChipCount, isActive && { color: sig.color + 'aa' }]}>
+                {count}
+              </Text>
+            )}
+          </TouchableOpacity>
+        )
+      })}
+    </ScrollView>
+  )
+}
+
+// ── Cards ─────────────────────────────────────────────────────────────────────
+
+function BookmarkBtn({ isBookmarked, color, onPress }: { isBookmarked: boolean; color: string; onPress: () => void }) {
+  return (
+    <TouchableOpacity onPress={onPress} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+      <Text style={[styles.bookmarkIcon, isBookmarked && { color }]}>
+        {isBookmarked ? '★' : '☆'}
+      </Text>
+    </TouchableOpacity>
+  )
+}
+
+function HeroCard({
+  item,
+  isBookmarked,
+  onBookmark,
+}: {
+  item: NewsItem
+  isBookmarked: boolean
+  onBookmark: () => void
+}) {
   const opacity = useRef(new Animated.Value(0)).current
   const ty = useRef(new Animated.Value(24)).current
   const router = useRouter()
@@ -135,24 +221,9 @@ function HeroCard({ item }: { item: NewsItem }) {
     ]).start()
   }, [])
 
-  function openDetail() {
-    router.push({
-      pathname: '/detail',
-      params: {
-        title: item.title,
-        category: item.category,
-        summary: item.summary,
-        code_example: '',
-        source_url: item.source_url,
-        importance_score: String(item.importance_score ?? 5),
-        created_at: item.created_at,
-      },
-    })
-  }
-
   return (
     <Animated.View style={{ opacity, transform: [{ translateY: ty }], marginHorizontal: 12, marginBottom: 8 }}>
-      <TouchableOpacity onPress={openDetail} activeOpacity={0.82}>
+      <TouchableOpacity onPress={() => pushDetail(router, item)} activeOpacity={0.82}>
         <LinearGradient
           colors={[sig.dimHi, sig.dim, 'rgba(18,30,55,0.98)']}
           start={{ x: 0, y: 0 }}
@@ -171,6 +242,7 @@ function HeroCard({ item }: { item: NewsItem }) {
               </View>
             )}
             <Text style={styles.heroTime}>{timeAgo(item.created_at)}</Text>
+            <BookmarkBtn isBookmarked={isBookmarked} color={sig.color} onPress={onBookmark} />
           </View>
 
           <Text style={styles.heroTitle}>{item.title}</Text>
@@ -190,7 +262,17 @@ function HeroCard({ item }: { item: NewsItem }) {
   )
 }
 
-function CompactCard({ item, index }: { item: NewsItem; index: number }) {
+function CompactCard({
+  item,
+  index,
+  isBookmarked,
+  onBookmark,
+}: {
+  item: NewsItem
+  index: number
+  isBookmarked: boolean
+  onBookmark: () => void
+}) {
   const opacity = useRef(new Animated.Value(0)).current
   const tx = useRef(new Animated.Value(20)).current
   const router = useRouter()
@@ -204,24 +286,9 @@ function CompactCard({ item, index }: { item: NewsItem; index: number }) {
     ]).start()
   }, [])
 
-  function openDetail() {
-    router.push({
-      pathname: '/detail',
-      params: {
-        title: item.title,
-        category: item.category,
-        summary: item.summary,
-        code_example: '',
-        source_url: item.source_url,
-        importance_score: String(item.importance_score ?? 5),
-        created_at: item.created_at,
-      },
-    })
-  }
-
   return (
     <Animated.View style={{ opacity, transform: [{ translateX: tx }] }}>
-      <TouchableOpacity onPress={openDetail} activeOpacity={0.82}>
+      <TouchableOpacity onPress={() => pushDetail(router, item)} activeOpacity={0.82}>
         <LinearGradient
           colors={[sig.dimHi, sig.dim, 'rgba(18,30,55,0.98)']}
           start={{ x: 0, y: 0 }}
@@ -236,6 +303,7 @@ function CompactCard({ item, index }: { item: NewsItem; index: number }) {
             </View>
             {hot && <Text style={styles.hotDot}>◈</Text>}
             <Text style={styles.compactTime}>{timeAgo(item.created_at)}</Text>
+            <BookmarkBtn isBookmarked={isBookmarked} color={sig.color} onPress={onBookmark} />
           </View>
 
           <Text style={styles.compactTitle} numberOfLines={3}>{item.title}</Text>
@@ -253,7 +321,72 @@ function CompactCard({ item, index }: { item: NewsItem; index: number }) {
   )
 }
 
-function Section({ category, items }: { category: string; items: NewsItem[] }) {
+function VerticalCard({
+  item,
+  index,
+  isBookmarked,
+  onBookmark,
+}: {
+  item: NewsItem
+  index: number
+  isBookmarked: boolean
+  onBookmark: () => void
+}) {
+  const opacity = useRef(new Animated.Value(0)).current
+  const ty = useRef(new Animated.Value(16)).current
+  const router = useRouter()
+  const sig = getSignal(item.category)
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(opacity, { toValue: 1, duration: 400, delay: Math.min(index * 60, 300), useNativeDriver: true }),
+      Animated.timing(ty, { toValue: 0, duration: 400, delay: Math.min(index * 60, 300), useNativeDriver: true }),
+    ]).start()
+  }, [])
+
+  return (
+    <Animated.View style={{ opacity, transform: [{ translateY: ty }], marginHorizontal: 12, marginBottom: 10 }}>
+      <TouchableOpacity onPress={() => pushDetail(router, item)} activeOpacity={0.82}>
+        <LinearGradient
+          colors={[sig.dimHi, sig.dim, 'rgba(18,30,55,0.98)']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={[styles.vertCard, { borderLeftColor: sig.color }]}
+        >
+          <View style={styles.cardGloss} />
+          <View style={styles.compactHead}>
+            <View style={[styles.tagBox, { borderColor: sig.color + '55', backgroundColor: sig.color + '12' }]}>
+              <Text style={[styles.tagTxt, { color: sig.color }]}>{sig.code}</Text>
+            </View>
+            {(item.importance_score ?? 0) >= 8 && <Text style={styles.hotDot}>◈</Text>}
+            <Text style={styles.compactTime}>{timeAgo(item.created_at)}</Text>
+            <BookmarkBtn isBookmarked={isBookmarked} color={sig.color} onPress={onBookmark} />
+          </View>
+          <Text style={styles.vertTitle} numberOfLines={2}>{item.title}</Text>
+          <Text style={styles.vertSummary} numberOfLines={3}>{item.summary}</Text>
+          <View style={styles.compactFoot}>
+            {item.importance_score != null
+              ? <SignalBars score={item.importance_score} color={sig.color} />
+              : <View />}
+            <Text style={[styles.accessBtn, { color: sig.color }]}>LIRE ›</Text>
+          </View>
+        </LinearGradient>
+      </TouchableOpacity>
+    </Animated.View>
+  )
+}
+
+function Section({
+  category,
+  items,
+  bookmarks,
+  onBookmark,
+}: {
+  category: string
+  items: NewsItem[]
+  bookmarks: Set<string>
+  onBookmark: (item: NewsItem) => void
+}) {
   if (items.length === 0) return null
   const sig = getSignal(category)
 
@@ -270,7 +403,14 @@ function Section({ category, items }: { category: string; items: NewsItem[] }) {
         horizontal
         showsHorizontalScrollIndicator={false}
         keyExtractor={item => item.id}
-        renderItem={({ item, index }) => <CompactCard item={item} index={index} />}
+        renderItem={({ item, index }) => (
+          <CompactCard
+            item={item}
+            index={index}
+            isBookmarked={bookmarks.has(item.id)}
+            onBookmark={() => onBookmark(item)}
+          />
+        )}
         contentContainerStyle={styles.hList}
         snapToInterval={CARD_W + 12}
         decelerationRate="fast"
@@ -278,6 +418,8 @@ function Section({ category, items }: { category: string; items: NewsItem[] }) {
     </View>
   )
 }
+
+// ── Main ──────────────────────────────────────────────────────────────────────
 
 const APP_VERSION = process.env.EXPO_PUBLIC_APP_VERSION ?? '2026.06.08'
 const RELEASES_API = 'https://api.github.com/repos/kevinlheritier031-afk/ainews/releases/latest'
@@ -291,6 +433,25 @@ export default function Index() {
   const [urgentItems, setUrgentItems] = useState<NewsItem[]>([])
   const [showAlert, setShowAlert] = useState(false)
   const [updateUrl, setUpdateUrl] = useState<string | null>(null)
+  const [activeCategory, setActiveCategory] = useState<string | null>(null)
+  const [bookmarks, setBookmarks] = useState<Set<string>>(new Set())
+
+  async function loadBookmarks() {
+    const stored = await AsyncStorage.getItem('bookmarks')
+    if (stored) {
+      const items: NewsItem[] = JSON.parse(stored)
+      setBookmarks(new Set(items.map(i => i.id)))
+    }
+  }
+
+  const toggleBookmark = useCallback(async (item: NewsItem) => {
+    const stored = await AsyncStorage.getItem('bookmarks')
+    const items: NewsItem[] = stored ? JSON.parse(stored) : []
+    const exists = items.some(i => i.id === item.id)
+    const updated = exists ? items.filter(i => i.id !== item.id) : [item, ...items]
+    await AsyncStorage.setItem('bookmarks', JSON.stringify(updated))
+    setBookmarks(new Set(updated.map(i => i.id)))
+  }, [])
 
   async function fetchNews() {
     const cutoff = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString()
@@ -301,7 +462,7 @@ export default function Index() {
       .gte('created_at', cutoff)
       .order('importance_score', { ascending: false, nullsFirst: false })
       .order('created_at', { ascending: false })
-      .limit(40)
+      .limit(60)
     if (data) setNews(data)
     return data
   }
@@ -335,6 +496,7 @@ export default function Index() {
       if (data) checkUrgent(data)
     }).finally(() => setLoading(false))
     checkUpdate()
+    loadBookmarks()
   }, [])
 
   async function onRefresh() {
@@ -343,12 +505,17 @@ export default function Index() {
     setRefreshing(false)
   }
 
-  const hero = news[0] ?? null
-  const rest = news.slice(1)
+  const filtered = activeCategory ? news.filter(n => n.category === activeCategory) : []
+  const hero = !activeCategory ? (news[0] ?? null) : null
+  const rest = !activeCategory ? news.slice(1) : []
   const sections = ['Modèle', 'Framework', 'Recherche'].map(cat => ({
     category: cat,
     items: rest.filter(n => n.category === cat),
   }))
+  const categoryCounts = news.reduce<Record<string, number>>((acc, n) => {
+    acc[n.category] = (acc[n.category] ?? 0) + 1
+    return acc
+  }, {})
 
   return (
     <View style={styles.root}>
@@ -389,9 +556,14 @@ export default function Index() {
             </View>
             <Text style={styles.logoVersion}>v{APP_VERSION}</Text>
           </View>
-          <TouchableOpacity onPress={() => router.push('/archive')} style={styles.archiveBtn}>
-            <Text style={styles.archiveBtnTxt}>ARCHIVE ›</Text>
-          </TouchableOpacity>
+          <View style={styles.headerBtns}>
+            <TouchableOpacity onPress={() => router.push('/bookmarks')} style={styles.headerBtn}>
+              <Text style={styles.headerBtnTxt}>★ FAV</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => router.push('/archive')} style={styles.headerBtn}>
+              <Text style={styles.headerBtnTxt}>ARCHIVE ›</Text>
+            </TouchableOpacity>
+          </View>
         </View>
         {updateUrl && (
           <TouchableOpacity style={styles.updateBanner} onPress={() => Linking.openURL(updateUrl)}>
@@ -399,6 +571,7 @@ export default function Index() {
           </TouchableOpacity>
         )}
         <Ticker items={news} />
+        <CategoryFilter active={activeCategory} onSelect={setActiveCategory} counts={categoryCounts} />
         <View style={styles.circuitBar}>
           <View style={[styles.circuitDot, { backgroundColor: '#00e5ff' }]} />
           <View style={styles.circuitLine} />
@@ -414,15 +587,44 @@ export default function Index() {
         <View style={styles.loadingBox}>
           <Text style={styles.loadingTxt}>› Connexion aux flux…</Text>
         </View>
+      ) : activeCategory ? (
+        <FlatList
+          data={filtered}
+          keyExtractor={item => item.id}
+          renderItem={({ item, index }) => (
+            <VerticalCard
+              item={item}
+              index={index}
+              isBookmarked={bookmarks.has(item.id)}
+              onBookmark={() => toggleBookmark(item)}
+            />
+          )}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#00e5ff" />}
+          contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 28 }]}
+          showsVerticalScrollIndicator={false}
+          ListEmptyComponent={<Text style={styles.empty}>Aucun signal dans cette catégorie</Text>}
+        />
       ) : (
         <ScrollView
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#00e5ff" />}
           contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 28 }]}
           showsVerticalScrollIndicator={false}
         >
-          {hero && <HeroCard item={hero} />}
+          {hero && (
+            <HeroCard
+              item={hero}
+              isBookmarked={bookmarks.has(hero.id)}
+              onBookmark={() => toggleBookmark(hero)}
+            />
+          )}
           {sections.map(s => (
-            <Section key={s.category} category={s.category} items={s.items} />
+            <Section
+              key={s.category}
+              category={s.category}
+              items={s.items}
+              bookmarks={bookmarks}
+              onBookmark={toggleBookmark}
+            />
           ))}
           {news.length === 0 && (
             <Text style={styles.empty}>Aucun signal détecté</Text>
@@ -461,7 +663,7 @@ const styles = StyleSheet.create({
     shadowColor: '#00e5ff', shadowRadius: 6, shadowOpacity: 0.3, shadowOffset: { width: 0, height: 0 },
   },
 
-  header: { paddingHorizontal: 18, paddingBottom: 14 },
+  header: { paddingHorizontal: 18, paddingBottom: 8 },
 
   logoRow:    { flexDirection: 'row', alignItems: 'center', marginBottom: 10, gap: 10 },
   logoMark:   { width: 32, height: 32, borderRadius: 8, backgroundColor: 'rgba(0,229,255,0.12)', borderWidth: 1, borderColor: 'rgba(0,229,255,0.3)', alignItems: 'center', justifyContent: 'center' },
@@ -469,19 +671,27 @@ const styles = StyleSheet.create({
   logoAI:     { color: '#ffffff', fontSize: 26, fontWeight: '900', letterSpacing: 2 },
   logoSlash:  { color: '#00e5ff', fontSize: 22, fontWeight: '300', opacity: 0.6 },
   logoNEWS:   { color: '#00e5ff', fontSize: 26, fontWeight: '900', letterSpacing: 2 },
-  archiveBtn:    { marginLeft: 'auto', borderWidth: 1, borderColor: 'rgba(0,229,255,0.25)', borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4 },
-  archiveBtnTxt: { color: '#00e5ff', fontSize: 9, fontWeight: '900', letterSpacing: 1.2 },
-  logoVersion:   { color: '#2a4a60', fontSize: 8, letterSpacing: 1, fontWeight: '600' },
+  logoVersion:{ color: '#2a4a60', fontSize: 8, letterSpacing: 1, fontWeight: '600' },
 
-  tickerBar:    { flexDirection: 'row', alignItems: 'center', marginBottom: 10, height: 28, backgroundColor: 'rgba(0,229,255,0.04)', borderRadius: 6, borderWidth: 1, borderColor: 'rgba(0,229,255,0.08)', overflow: 'hidden' },
+  headerBtns: { marginLeft: 'auto', flexDirection: 'row', gap: 6 },
+  headerBtn:  { borderWidth: 1, borderColor: 'rgba(0,229,255,0.25)', borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4 },
+  headerBtnTxt: { color: '#00e5ff', fontSize: 9, fontWeight: '900', letterSpacing: 1.2 },
+
+  tickerBar:    { flexDirection: 'row', alignItems: 'center', marginBottom: 8, height: 28, backgroundColor: 'rgba(0,229,255,0.04)', borderRadius: 6, borderWidth: 1, borderColor: 'rgba(0,229,255,0.08)', overflow: 'hidden' },
   tickerLabel:  { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, borderRightWidth: 1, borderRightColor: 'rgba(0,229,255,0.12)', height: '100%' },
   tickerDot:    { width: 5, height: 5, borderRadius: 3, backgroundColor: '#00e5ff' },
   tickerLabelTxt:{ color: '#00e5ff', fontSize: 8, fontWeight: '900', letterSpacing: 1.5 },
   tickerTrack:  { flex: 1, overflow: 'hidden', height: '100%', justifyContent: 'center' },
   tickerText:   { color: '#4a7080', fontSize: 11, letterSpacing: 0.3, paddingLeft: 10, whiteSpace: 'nowrap' } as any,
-  tickerFadeL:  { position: 'absolute', left: 0, top: 0, bottom: 0, width: 40, zIndex: 1 },
 
-  circuitBar:  { flexDirection: 'row', alignItems: 'center' },
+  filterRow:        { paddingHorizontal: 0, paddingVertical: 8, gap: 8 },
+  filterChip:       { borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', borderRadius: 20, paddingHorizontal: 12, paddingVertical: 5, backgroundColor: 'rgba(255,255,255,0.03)', flexDirection: 'row', alignItems: 'center', gap: 5 },
+  filterChipAll:    { borderColor: '#00e5ff88', backgroundColor: 'rgba(0,229,255,0.12)' },
+  filterChipTxt:    { fontSize: 9, fontWeight: '900', letterSpacing: 1.5, color: '#3a5070' },
+  filterChipTxtAll: { color: '#00e5ff' },
+  filterChipCount:  { fontSize: 8, fontWeight: '700', color: '#2a4050', letterSpacing: 0.5 },
+
+  circuitBar:  { flexDirection: 'row', alignItems: 'center', marginTop: 2 },
   circuitDot:  { width: 5, height: 5, borderRadius: 3 },
   circuitLine: { flex: 1, height: 1, backgroundColor: '#1e3050' },
 
@@ -495,6 +705,8 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: 'rgba(255,255,255,0.10)',
   },
+
+  bookmarkIcon: { color: '#2a4050', fontSize: 15, fontWeight: '900' },
 
   // Hero
   heroCard: {
@@ -563,6 +775,22 @@ const styles = StyleSheet.create({
   compactFoot: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   barsRow:     { flexDirection: 'row', gap: 3, alignItems: 'flex-end' },
   accessBtn:   { fontSize: 10, fontWeight: '900', letterSpacing: 1.5 },
+
+  // Vertical card (filtered view)
+  vertCard: {
+    borderRadius: 16,
+    borderLeftWidth: 2,
+    borderTopWidth: 1,
+    borderRightWidth: 1,
+    borderBottomWidth: 1,
+    borderTopColor:    'rgba(255,255,255,0.07)',
+    borderRightColor:  'rgba(255,255,255,0.03)',
+    borderBottomColor: 'rgba(0,0,0,0.35)',
+    padding: 16,
+    overflow: 'hidden',
+  },
+  vertTitle:   { color: '#d0e4f0', fontSize: 15, fontWeight: '700', lineHeight: 22, marginBottom: 8, letterSpacing: 0.1 },
+  vertSummary: { color: '#7a98a8', fontSize: 12, lineHeight: 18, marginBottom: 12 },
 
   empty: { color: '#2a4050', textAlign: 'center', marginTop: 80, fontSize: 14, letterSpacing: 0.5 },
 

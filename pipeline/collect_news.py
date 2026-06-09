@@ -178,8 +178,24 @@ def fetch_hn() -> list[dict]:
 
 # ── Intelligence : dédup + contexte mémoire + tendances ──────────────────────
 
+_STOP_WORDS = {
+    "the", "a", "an", "and", "or", "of", "in", "to", "for", "is", "are", "was", "with",
+    "on", "at", "by", "from", "as", "it", "its", "be", "has", "have", "that", "this",
+    "de", "la", "le", "les", "et", "en", "du", "des", "un", "une", "sur", "par", "pour",
+}
+
+
+def _title_similarity(t1: str, t2: str) -> float:
+    """Jaccard similarity entre deux titres, en ignorant les stop words."""
+    w1 = set(t1.lower().split()) - _STOP_WORDS
+    w2 = set(t2.lower().split()) - _STOP_WORDS
+    if not w1 or not w2:
+        return 0.0
+    return len(w1 & w2) / len(w1 | w2)
+
+
 def deduplicate_articles(articles: list[dict]) -> list[dict]:
-    """Fusionne les articles avec la même URL, note ceux couverts par plusieurs sources."""
+    """Fusionne les articles avec la même URL ou des titres quasi-identiques (Jaccard ≥ 0.5)."""
     url_map: dict[str, dict] = {}
     for a in articles:
         url = a["url"]
@@ -192,8 +208,22 @@ def deduplicate_articles(articles: list[dict]) -> list[dict]:
                 url_map[url]["sources"].append(a["source"])
                 url_map[url]["source_count"] += 1
 
-    result = list(url_map.values())
-    multi = sum(1 for a in result if a["source_count"] > 1)
+    # Second pass : fusionner les articles avec titres quasi-identiques
+    result: list[dict] = []
+    for candidate in url_map.values():
+        duplicate = False
+        for kept in result:
+            if _title_similarity(candidate["title"], kept["title"]) >= 0.5:
+                for src in candidate.get("sources", [candidate["source"]]):
+                    if src not in kept.get("sources", []):
+                        kept.setdefault("sources", [kept["source"]]).append(src)
+                        kept["source_count"] = kept.get("source_count", 1) + 1
+                duplicate = True
+                break
+        if not duplicate:
+            result.append(candidate)
+
+    multi = sum(1 for a in result if a.get("source_count", 1) > 1)
     logger.info("Dedup: %d -> %d articles (%d multi-sources)", len(articles), len(result), multi)
     return result
 
